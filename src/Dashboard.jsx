@@ -291,6 +291,9 @@ export default function Dashboard() {
         @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0);opacity:1} 100%{transform:translateY(360px) rotate(540deg);opacity:0} }
         .lift{transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
         .lift:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.38);border-color:rgba(14,165,233,.45)}
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important; }
+        }
       `}</style>
     </div>
   );
