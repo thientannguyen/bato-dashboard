@@ -31,7 +31,19 @@ const fallbackMatches = [
   { id: 2, label: "Hàn Quốc vs Czechia", home: "Hàn Quốc", away: "Czechia", a: 2, b: 1, group: "B", stage: "group", motm: "", scorers: [] },
 ];
 
+// Trả về true khi màn hình hẹp (điện thoại) để chuyển layout sang xếp dọc.
+function useIsNarrow(bp = 700) {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.innerWidth <= bp);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth <= bp);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [bp]);
+  return narrow;
+}
+
 export default function Dashboard() {
+  const narrow = useIsNarrow();
   const [matches, setMatches] = useState(fallbackMatches);
   const [fixtures, setFixtures] = useState([]);
   const [status, setStatus] = useState("idle");
@@ -168,7 +180,7 @@ export default function Dashboard() {
   }, [fixtures, now]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0a1628 0%,#0d2137 50%,#0a1f33 100%)", color: "#e2f1ff", fontFamily: "system-ui,-apple-system,sans-serif", padding: "24px" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0a1628 0%,#0d2137 50%,#0a1f33 100%)", color: "#e2f1ff", fontFamily: "system-ui,-apple-system,sans-serif", padding: narrow ? "14px" : "24px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 6 }}>
@@ -191,10 +203,10 @@ export default function Dashboard() {
         </div>
 
         <Reveal delay={60}>
-        <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 20, marginTop: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "340px 1fr", gap: narrow ? 14 : 20, marginTop: narrow ? 14 : 20 }}>
           <DamVisual fillPct={fillPct} level={current?.level ?? 0} />
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: narrow ? 8 : 12 }}>
               <Stat icon={<Gauge size={18} />} label="Mực nước hiện tại" value={<CountUp value={current?.level ?? 0} suffix=" m" />} accent="#0ea5e9" />
               <Stat icon={delta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />} label="So với trận trước" value={<CountUp value={delta} suffix=" m" signed />} accent={delta >= 0 ? "#22c55e" : "#f87171"} />
               <Stat icon={<Droplet size={18} />} label="Tổng bàn / số trận" value={<><CountUp value={current?.cumGoals ?? 0} /> / <CountUp value={data.length} /></>} accent="#a78bfa" />
@@ -231,7 +243,7 @@ export default function Dashboard() {
         <Reveal delay={240}><StandingsSection standings={standings} /></Reveal>
 
         {/* Digit tracker */}
-        <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} /></Reveal>
+        <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} narrow={narrow} /></Reveal>
 
         {/* Vua phá lưới */}
         <Reveal delay={360}><TopScorersSection scorers={topScorers} /></Reveal>
@@ -240,7 +252,7 @@ export default function Dashboard() {
         <Reveal delay={420}>
         <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
           <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Lịch sử trận đấu</h3>
-          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+          <div style={{ maxHeight: 320, overflowY: "auto", overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ color: "#7da8c9", textAlign: "left" }}>
@@ -540,7 +552,7 @@ function StatusLine({ status, msg, lastUpdated }) {
   );
 }
 
-function DigitTracker({ verified, verifiedCount }) {
+function DigitTracker({ verified, verifiedCount, narrow }) {
   const allDone = verifiedCount === 10;
   const pct = (verifiedCount / 10) * 100;
   return (
@@ -559,18 +571,18 @@ function DigitTracker({ verified, verifiedCount }) {
       <div style={{ height: 10, borderRadius: 99, background: "rgba(255,255,255,.07)", overflow: "hidden", marginBottom: 16 }}>
         <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: allDone ? "linear-gradient(90deg,#22c55e,#4ade80)" : "linear-gradient(90deg,#0ea5e9,#06b6d4)", transition: "width .8s cubic-bezier(.4,0,.2,1)" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(10,1fr)", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${narrow ? 5 : 10},1fr)`, gap: 8 }}>
         {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => {
           const entry = verified[d];
           const on = entry !== undefined;
           const day = entry?.day;
           const count = entry?.count;
           return (
-            <div key={d} style={{ position: "relative", aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: on ? "linear-gradient(135deg,rgba(34,197,94,.22),rgba(14,165,233,.18))" : "rgba(255,255,255,.03)", border: `1px solid ${on ? "rgba(34,197,94,.55)" : "rgba(255,255,255,.08)"}`, boxShadow: on ? "0 0 16px rgba(34,197,94,.25)" : "none", transition: "all .4s" }}>
-              <span style={{ fontSize: 26, fontWeight: 800, color: on ? "#fff" : "#3a5a72" }}>{d}</span>
-              {on ? <span style={{ fontSize: 9, color: "#86efac", fontWeight: 600 }}>Ngày {day}</span> : <span style={{ fontSize: 9, color: "#3a5a72" }}>chờ</span>}
-              {on && <span title={`Xuất hiện ${count} lần`} style={{ position: "absolute", top: 6, left: 6, fontSize: 11, fontWeight: 800, color: "#bbf7d0", background: "rgba(34,197,94,.28)", borderRadius: 7, padding: "1px 6px", lineHeight: 1.3 }}>×{count}</span>}
-              {on && <CheckCircle size={13} color="#22c55e" style={{ position: "absolute", top: 5, right: 5 }} />}
+            <div key={d} style={{ position: "relative", aspectRatio: narrow ? "1 / 1.18" : "1", borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: narrow ? "flex-end" : "center", paddingBottom: narrow ? 8 : 0, background: on ? "linear-gradient(135deg,rgba(34,197,94,.22),rgba(14,165,233,.18))" : "rgba(255,255,255,.03)", border: `1px solid ${on ? "rgba(34,197,94,.55)" : "rgba(255,255,255,.08)"}`, boxShadow: on ? "0 0 16px rgba(34,197,94,.25)" : "none", transition: "all .4s" }}>
+              <span style={{ fontSize: narrow ? 22 : 26, fontWeight: 800, color: on ? "#fff" : "#3a5a72", lineHeight: 1 }}>{d}</span>
+              {on ? <span style={{ fontSize: 9, color: "#86efac", fontWeight: 600, marginTop: 3 }}>Ngày {day}</span> : <span style={{ fontSize: 9, color: "#3a5a72", marginTop: 3 }}>chờ</span>}
+              {on && <span title={`Xuất hiện ${count} lần`} style={{ position: "absolute", top: 5, left: 5, fontSize: narrow ? 9 : 11, fontWeight: 800, color: "#bbf7d0", background: "rgba(34,197,94,.28)", borderRadius: 7, padding: narrow ? "1px 4px" : "1px 6px", lineHeight: 1.3 }}>×{count}</span>}
+              {on && <CheckCircle size={narrow ? 11 : 13} color="#22c55e" style={{ position: "absolute", top: 5, right: 5 }} />}
             </div>
           );
         })}
