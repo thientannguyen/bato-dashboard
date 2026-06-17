@@ -1,13 +1,16 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { Droplet, TrendingUp, TrendingDown, Waves, Gauge, RefreshCw, CheckCircle, AlertCircle, ChevronDown, CircleDot, Trophy, CalendarClock, MapPin, Clock } from "lucide-react";
-import { fetchWorldCup, flag } from "./wc-data.js";
+import { fetchWorldCup, flag, ROUND_ORDER } from "./wc-data.js";
 
 // Mực nước = (tổng bàn thắng cộng dồn / số trận) * 100
 const MAX_LEVEL = 400;
 const STORE_KEY = "bato:matches";
 const FX_KEY = "bato:fixtures";
+const KO_KEY = "bato:knockout";
 const TZ = "America/Vancouver";
+const REFRESH_MS = 10 * 60 * 1000; // tự làm mới mỗi 10 phút
+const LIVE_WINDOW_MS = 130 * 60 * 1000; // coi là "đang đá" trong ~130 phút sau giờ bóng lăn
 
 // localStorage shim — giữ cùng hình dạng { value } như storage cũ.
 const storage = {
@@ -46,12 +49,19 @@ export default function Dashboard() {
   const narrow = useIsNarrow();
   const [matches, setMatches] = useState(fallbackMatches);
   const [fixtures, setFixtures] = useState([]);
+  const [knockout, setKnockout] = useState([]);
   const [status, setStatus] = useState("idle");
   const [statusMsg, setStatusMsg] = useState("");
   const [fxStatus, setFxStatus] = useState("idle");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const [simLevel, setSimLevel] = useState(null);
+  // Cổng bí mật: thanh mô phỏng vỡ đập chỉ hiện khi URL có ?vodap hoặc #vodap.
+  const [showSim] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return /vodap/i.test(window.location.search + window.location.hash);
+  });
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -74,6 +84,13 @@ export default function Dashboard() {
         if (Array.isArray(sv.fixtures)) setFixtures(sv.fixtures);
       }
     } catch (e) {}
+    try {
+      const r3 = storage.get(KO_KEY);
+      if (r3 && r3.value) {
+        const sv = JSON.parse(r3.value);
+        if (Array.isArray(sv.knockout)) setKnockout(sv.knockout);
+      }
+    } catch (e) {}
   }, []);
 
   // Lấy kết quả + lịch từ openfootball/worldcup.json (miễn phí, không cần API key).
@@ -82,7 +99,7 @@ export default function Dashboard() {
     setStatusMsg("Đang cập nhật kết quả & lịch...");
     setFxStatus("loading");
     try {
-      const { matches: cleaned, fixtures: fx } = await fetchWorldCup();
+      const { matches: cleaned, fixtures: fx, knockout: ko } = await fetchWorldCup();
       const ts = new Date().toISOString();
       if (cleaned.length) {
         setMatches(cleaned);
@@ -90,6 +107,8 @@ export default function Dashboard() {
       }
       setFixtures(fx);
       storage.set(FX_KEY, JSON.stringify({ fixtures: fx, fxUpdated: ts }));
+      setKnockout(Array.isArray(ko) ? ko : []);
+      storage.set(KO_KEY, JSON.stringify({ knockout: ko || [], koUpdated: ts }));
       setLastUpdated(ts);
       setStatus("ok");
       setStatusMsg(`Đã cập nhật ${cleaned.length} trận, ${fx.length} sắp tới`);
@@ -107,6 +126,16 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tự động làm mới kết quả & lịch mỗi 10 phút (dừng khi tab ẩn để khỏi gọi mạng vô ích).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      refreshAll();
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const data = useMemo(() => {
     let cumGoals = 0;
     return matches.map((m, i) => {
@@ -119,7 +148,11 @@ export default function Dashboard() {
   const current = data[data.length - 1];
   const prev = data[data.length - 2];
   const delta = current && prev ? current.level - prev.level : 0;
-  const fillPct = current ? Math.min(current.level / MAX_LEVEL, 1) : 0;
+  const realLevel = current?.level ?? 0;
+  // Mô phỏng: nếu simLevel != null thì đập hiển thị theo mức mô phỏng (không đụng dữ liệu thật).
+  const dispLevel = showSim && simLevel != null ? simLevel : realLevel;
+  const fillPct = Math.min(dispLevel / MAX_LEVEL, 1);
+  const broken = dispLevel >= MAX_LEVEL;
 
   const verified = useMemo(() => {
     const seen = {};
@@ -181,7 +214,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0a1628 0%,#0d2137 50%,#0a1f33 100%)", color: "#e2f1ff", fontFamily: "system-ui,-apple-system,sans-serif", padding: narrow ? "14px" : "24px" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {broken && <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 50, background: "radial-gradient(ellipse at center, transparent 35%, rgba(220,38,38,.55) 100%)", animation: "dangerFlash 0.9s ease-in-out infinite" }} />}
+      <div style={{ maxWidth: 1100, margin: "0 auto", animation: broken ? "quake .35s ease-in-out infinite" : "none" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -204,7 +238,10 @@ export default function Dashboard() {
 
         <Reveal delay={60}>
         <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "340px 1fr", gap: narrow ? 14 : 20, marginTop: narrow ? 14 : 20 }}>
-          <DamVisual fillPct={fillPct} level={current?.level ?? 0} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <DamVisual fillPct={fillPct} level={dispLevel} broken={broken} />
+            {showSim && <SimControl level={dispLevel} simOn={simLevel != null} broken={broken} onSet={setSimLevel} />}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: narrow ? 8 : 12 }}>
               <Stat icon={<Gauge size={18} />} label="Mực nước hiện tại" value={<CountUp value={current?.level ?? 0} suffix=" m" />} accent="#0ea5e9" />
@@ -237,10 +274,13 @@ export default function Dashboard() {
         <Reveal delay={120}><NextMatchCountdown match={nextMatch} now={now} /></Reveal>
 
         {/* Fixtures */}
-        <Reveal delay={180}><FixturesSection fixtures={fixtures} status={fxStatus} /></Reveal>
+        <Reveal delay={180}><FixturesSection fixtures={fixtures} status={fxStatus} now={now} /></Reveal>
 
         {/* Standings */}
         <Reveal delay={240}><StandingsSection standings={standings} /></Reveal>
+
+        {/* Sơ đồ cây đấu loại */}
+        <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} /></Reveal>
 
         {/* Digit tracker */}
         <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} narrow={narrow} /></Reveal>
@@ -301,6 +341,14 @@ export default function Dashboard() {
         @keyframes fadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
         @keyframes tickIn { from{opacity:0;transform:translateY(-65%)} to{opacity:1;transform:none} }
         @keyframes confettiFall { 0%{transform:translateY(-10px) rotate(0);opacity:1} 100%{transform:translateY(360px) rotate(540deg);opacity:0} }
+        @keyframes shake { 0%,100%{transform:translate(0,0)} 10%{transform:translate(-7px,3px) rotate(-.4deg)} 30%{transform:translate(7px,-3px) rotate(.4deg)} 50%{transform:translate(-6px,2px)} 70%{transform:translate(6px,-2px) rotate(.3deg)} 90%{transform:translate(-3px,1px)} }
+        @keyframes quake { 0%,100%{transform:translate(0,0)} 25%{transform:translate(-2px,1px)} 50%{transform:translate(2px,-1px)} 75%{transform:translate(-1px,1px)} }
+        @keyframes gush { 0%{transform:translateY(-100%);opacity:.9} 100%{transform:translateY(0);opacity:.3} }
+        @keyframes alertPulse { 0%,100%{opacity:1;transform:scale(1) rotate(-1deg)} 50%{opacity:.65;transform:scale(1.09) rotate(1deg)} }
+        @keyframes dangerFlash { 0%,100%{opacity:.12} 50%{opacity:.5} }
+        @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
+        @keyframes jet { 0%{transform:translate(0,0) scale(1);opacity:.95} 100%{transform:translate(var(--jx),var(--jy)) scale(.3);opacity:0} }
+        @keyframes crackDraw { from{stroke-dashoffset:220} to{stroke-dashoffset:0} }
         .lift{transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
         .lift:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.38);border-color:rgba(14,165,233,.45)}
         @media (prefers-reduced-motion: reduce) {
@@ -331,11 +379,23 @@ function fxTimeLabel(f) {
   return f.kickoff_text || "Chưa rõ giờ";
 }
 
-function FixturesSection({ fixtures, status }) {
+// Trận coi như "đang đá" khi giờ bóng lăn đã qua nhưng chưa quá ~130 phút và chưa có kết quả.
+function isLive(f, now) {
+  if (!f.kickoff_iso) return false;
+  const t = new Date(f.kickoff_iso).getTime();
+  if (isNaN(t)) return false;
+  return now >= t && now < t + LIVE_WINDOW_MS;
+}
+
+function FixturesSection({ fixtures, status, now }) {
+  const liveCount = fixtures.filter((f) => isLive(f, now)).length;
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}><CalendarClock size={16} color="#38bdf8" /> Trận sắp tới — hôm nay & ngày mai</h3>
-      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Giờ hiển thị theo múi giờ Vancouver (PT). Bấm "Cập nhật kết quả" để làm mới lịch.</p>
+      <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}>
+        <CalendarClock size={16} color="#38bdf8" /> Trận sắp tới — hôm nay & ngày mai
+        {liveCount > 0 && <LiveBadge label={`${liveCount} trận đang đá`} />}
+      </h3>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Giờ hiển thị theo múi giờ Vancouver (PT). Tự làm mới mỗi 10 phút, hoặc bấm "Cập nhật kết quả".</p>
       {fixtures.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: "#5d83a3", fontStyle: "italic" }}>
           {status === "loading" ? "Đang tải lịch thi đấu..." : status === "error" ? "Không lấy được lịch, thử lại sau." : "Chưa có lịch — bấm \"Cập nhật kết quả\" để lấy các trận hôm nay và ngày mai."}
@@ -343,13 +403,14 @@ function FixturesSection({ fixtures, status }) {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12 }}>
           {fixtures.map((f) => {
+            const live = isLive(f, now);
             const day = fxDayLabel(f.kickoff_iso);
             const venue = [f.stadium, f.city, f.country].filter(Boolean).join(", ");
             return (
-              <div key={f.id} className="lift" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div key={f.id} className="lift" style={{ background: live ? "rgba(239,68,68,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${live ? "rgba(239,68,68,.45)" : "rgba(255,255,255,.08)"}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <GroupBadge group={f.group} stage={f.stage} />
-                  {day && <span style={{ fontSize: 11, fontWeight: 700, color: day === "Hôm nay" ? "#fbbf24" : "#7dd3fc", background: day === "Hôm nay" ? "rgba(251,191,36,.15)" : "rgba(14,165,233,.12)", padding: "2px 8px", borderRadius: 6 }}>{day}</span>}
+                  {live ? <LiveBadge label="ĐANG ĐÁ" /> : day && <span style={{ fontSize: 11, fontWeight: 700, color: day === "Hôm nay" ? "#fbbf24" : "#7dd3fc", background: day === "Hôm nay" ? "rgba(251,191,36,.15)" : "rgba(14,165,233,.12)", padding: "2px 8px", borderRadius: 6 }}>{day}</span>}
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#e2f1ff" }}>{flag(f.home)} {f.home} <span style={{ color: "#5d83a3", fontWeight: 400 }}>vs</span> {f.away} {flag(f.away)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#9cc2dd" }}>
@@ -365,6 +426,103 @@ function FixturesSection({ fixtures, status }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Nhãn "đang đá" — chấm đỏ nhấp nháy.
+function LiveBadge({ label }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "#fca5a5", background: "rgba(239,68,68,.16)", border: "1px solid rgba(239,68,68,.4)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ef4444", boxShadow: "0 0 6px #ef4444", animation: "livePulse 1.1s ease-in-out infinite" }} />
+      {label}
+    </span>
+  );
+}
+
+// Sơ đồ cây đấu loại trực tiếp — xếp các vòng thành cột, cuộn ngang trên mobile.
+// Mặc định thu gọn khi chưa có trận knock-out nào đá; tự mở khi vòng loại trực tiếp bắt đầu.
+function BracketSection({ knockout, now, narrow }) {
+  const rounds = useMemo(() => {
+    const by = {};
+    (knockout || []).forEach((m) => {
+      const r = m.round || "Khác";
+      (by[r] = by[r] || []).push(m);
+    });
+    const ordered = ROUND_ORDER.filter((r) => by[r]);
+    Object.keys(by).forEach((r) => { if (!ordered.includes(r)) ordered.push(r); });
+    return ordered.map((r) => ({ round: r, matches: by[r] }));
+  }, [knockout]);
+
+  const started = useMemo(() => (knockout || []).some((m) => m.played || isLive(m, now)), [knockout, now]);
+  const total = (knockout || []).length;
+  const [open, setOpen] = useState(false);
+  const [touched, setTouched] = useState(false);
+  // Tự mở khi knock-out bắt đầu (trừ khi người dùng đã tự bật/tắt).
+  useEffect(() => { if (started && !touched) setOpen(true); }, [started, touched]);
+  const toggle = () => { setTouched(true); setOpen((o) => !o); };
+
+  if (rounds.length === 0) {
+    return (
+      <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}><Trophy size={16} color="#a78bfa" /> Sơ đồ đấu loại trực tiếp</h3>
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#5d83a3" }}>Chưa có cặp đấu loại trực tiếp — sơ đồ sẽ hiện khi có lịch knock-out.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
+      <div onClick={toggle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer" }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}>
+          <Trophy size={16} color="#a78bfa" /> Sơ đồ đấu loại trực tiếp
+          <span style={{ fontSize: 11, fontWeight: 700, color: started ? "#86efac" : "#7da8c9", background: started ? "rgba(34,197,94,.15)" : "rgba(255,255,255,.06)", padding: "2px 8px", borderRadius: 999 }}>
+            {started ? "đang diễn ra" : `${total} cặp dự kiến`}
+          </span>
+        </h3>
+        <ChevronDown size={18} color="#7da8c9" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
+      </div>
+      {!open ? (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#5d83a3" }}>
+          {started ? "Bấm để xem sơ đồ các vòng." : "Chưa tới vòng knock-out — bấm để xem các cặp dự kiến."}
+        </p>
+      ) : (
+        <>
+          <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi cột là một vòng. Trận đã đá hiện tỉ số, trận chưa đá hiện giờ bóng lăn (giờ Vancouver).</p>
+          <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 6 }}>
+            {rounds.map(({ round, matches }) => (
+              <div key={round} style={{ minWidth: narrow ? 220 : 240, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: 13, textAlign: "center", padding: "4px 0", background: "rgba(167,139,250,.1)", borderRadius: 8 }}>{round}</div>
+                {matches.map((m, i) => (
+                  <BracketMatch key={i} m={m} now={now} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BracketMatch({ m, now }) {
+  const live = isLive(m, now);
+  const hWin = m.played && m.a > m.b;
+  const aWin = m.played && m.b > m.a;
+  const row = (name, score, win) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <span style={{ fontSize: 13, fontWeight: win ? 800 : 600, color: win ? "#fff" : "#cfe6f7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{flag(name)} {name || "—"}</span>
+      {m.played && <span style={{ fontSize: 13, fontWeight: 800, color: win ? "#34d399" : "#7da8c9", minWidth: 16, textAlign: "right" }}>{score}</span>}
+    </div>
+  );
+  return (
+    <div className="lift" style={{ background: live ? "rgba(239,68,68,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${live ? "rgba(239,68,68,.45)" : "rgba(255,255,255,.08)"}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+      {row(m.home, m.a, hWin)}
+      <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+      {row(m.away, m.b, aWin)}
+      <div style={{ fontSize: 10.5, color: live ? "#fca5a5" : "#5d83a3", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
+        {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }) : "Chưa rõ giờ")}
+      </div>
     </div>
   );
 }
@@ -606,10 +764,23 @@ const BUBBLES = [
   { left: "86%", size: 4, dur: 5.6, delay: 3.1 },
 ];
 
-function DamVisual({ fillPct, level }) {
+// Tia nước bắn ra khi vỡ đập — mỗi tia có gốc (x,y) và hướng (jx,jy).
+const JETS = [
+  { x: "30%", y: "2%", jx: "-34px", jy: "78px", size: 7, dur: 1.1, delay: 0 },
+  { x: "50%", y: "0%", jx: "2px", jy: "96px", size: 8, dur: 1.0, delay: 0.18 },
+  { x: "68%", y: "3%", jx: "34px", jy: "80px", size: 7, dur: 1.2, delay: 0.1 },
+  { x: "16%", y: "42%", jx: "-46px", jy: "30px", size: 6, dur: 1.3, delay: 0.32 },
+  { x: "82%", y: "46%", jx: "48px", jy: "26px", size: 6, dur: 1.15, delay: 0.14 },
+  { x: "40%", y: "18%", jx: "-22px", jy: "86px", size: 6, dur: 1.05, delay: 0.4 },
+  { x: "60%", y: "14%", jx: "28px", jy: "90px", size: 7, dur: 1.25, delay: 0.26 },
+];
+
+function DamVisual({ fillPct, level, broken }) {
   const waterTop = 100 - fillPct * 100;
-  // Màu nước theo mức: gần tràn -> xanh ngọc, thấp -> hổ phách, còn lại -> xanh dương.
-  const water = fillPct >= 0.85
+  // Màu nước theo mức: vỡ đập -> đỏ dữ, gần tràn -> xanh ngọc, thấp -> hổ phách, còn lại -> xanh dương.
+  const water = broken
+    ? { from: "#ef4444", to: "#991b1b", crest: "#f87171", glow: "239,68,68" }
+    : fillPct >= 0.85
     ? { from: "#10b981", to: "#047857", crest: "#34d399", glow: "16,185,129" }
     : fillPct <= 0.25
     ? { from: "#f59e0b", to: "#b45309", crest: "#fbbf24", glow: "245,158,11" }
@@ -617,7 +788,7 @@ function DamVisual({ fillPct, level }) {
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, position: "relative", overflow: "hidden" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Đập thủy điện BA TO</h3>
-      <div style={{ position: "relative", height: 360, borderRadius: 12, overflow: "hidden", background: "linear-gradient(#1a3a52,#13293d)", border: "2px solid rgba(255,255,255,.1)" }}>
+      <div style={{ position: "relative", height: 360, borderRadius: 12, overflow: "hidden", background: "linear-gradient(#1a3a52,#13293d)", border: `2px solid ${broken ? "rgba(239,68,68,.85)" : "rgba(255,255,255,.1)"}`, boxShadow: broken ? "0 0 30px rgba(239,68,68,.5)" : "none", animation: broken ? "shake .4s ease-in-out infinite" : "none" }}>
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: `${waterTop}%`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: `linear-gradient(180deg,${water.from},${water.to})`, overflow: "hidden", boxShadow: `0 0 40px rgba(${water.glow},.4)` }}>
           <div style={{ position: "absolute", top: -8, left: 0, width: "200%", height: 16, animation: "wave 4s linear infinite" }}>
             <svg width="100%" height="16" viewBox="0 0 1200 16" preserveAspectRatio="none">
@@ -639,8 +810,47 @@ function DamVisual({ fillPct, level }) {
         <div style={{ position: "absolute", right: 10, top: `calc(${waterTop}% - 12px)`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: water.from, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#3a5a72,#2a4358)" }} />
         <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#2a4358,#3a5a72)" }} />
+        {broken && (
+          <>
+            {/* nước cuộn tràn qua đỉnh */}
+            <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "100%", background: "linear-gradient(180deg,rgba(248,113,113,.6),rgba(248,113,113,0) 55%)", animation: "gush 1.1s ease-out infinite", pointerEvents: "none" }} />
+            {/* vết nứt trên thân đập — vẽ dần ra */}
+            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} viewBox="0 0 100 100" preserveAspectRatio="none">
+              <polyline points="22,0 28,16 17,33 30,50 19,70 31,100" fill="none" stroke="rgba(255,255,255,.8)" strokeWidth="1" style={{ strokeDasharray: 220, animation: "crackDraw .55s ease-out both" }} />
+              <polyline points="70,0 64,20 77,38 67,58 79,80 69,100" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="0.9" style={{ strokeDasharray: 220, animation: "crackDraw .65s ease-out .1s both" }} />
+              <polyline points="46,8 52,30 42,52 54,78" fill="none" stroke="rgba(255,255,255,.55)" strokeWidth="0.8" style={{ strokeDasharray: 220, animation: "crackDraw .5s ease-out .2s both" }} />
+            </svg>
+            {/* tia nước bắn ra từ thân đập */}
+            {JETS.map((j, i) => (
+              <div key={i} style={{ position: "absolute", left: j.x, top: j.y, width: j.size, height: j.size, borderRadius: "50%", background: "rgba(255,255,255,.85)", boxShadow: "0 0 6px rgba(255,255,255,.6)", pointerEvents: "none", "--jx": j.jx, "--jy": j.jy, animation: `jet ${j.dur}s ease-out ${j.delay}s infinite` }} />
+            ))}
+            {/* cảnh báo */}
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ background: "rgba(220,38,38,.94)", color: "#fff", fontWeight: 900, fontSize: 18, lineHeight: 1.3, padding: "12px 18px", borderRadius: 12, boxShadow: "0 6px 26px rgba(0,0,0,.55)", textAlign: "center", animation: "alertPulse 1s ease-in-out infinite" }}>💥 VỠ ĐẬP!<br /><span style={{ fontSize: 12, fontWeight: 700 }}>Mực nước {level}m vượt mốc tràn {MAX_LEVEL}m</span></div>
+            </div>
+          </>
+        )}
       </div>
-      <p style={{ margin: "10px 2px 0", fontSize: 11, color: "#5d83a3", textAlign: "center" }}>Mốc tràn đập: {MAX_LEVEL}m</p>
+      <p style={{ margin: "10px 2px 0", fontSize: 11, color: broken ? "#fca5a5" : "#5d83a3", textAlign: "center" }}>{broken ? "⚠️ Đập đã vỡ — vượt mốc tràn!" : `Mốc tràn đập: ${MAX_LEVEL}m`}</p>
+    </div>
+  );
+}
+
+// Thanh mô phỏng mực nước — kéo lên để xem hiệu ứng vỡ đập (không đụng dữ liệu thật).
+function SimControl({ level, simOn, broken, onSet }) {
+  return (
+    <div style={{ background: "rgba(255,255,255,.04)", border: `1px solid ${broken ? "rgba(239,68,68,.4)" : "rgba(255,255,255,.08)"}`, borderRadius: 14, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#bcdcf2" }}>🧪 Mô phỏng mực nước</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: broken ? "#f87171" : "#38bdf8" }}>{level} m{simOn ? "" : " (thật)"}</span>
+      </div>
+      <input type="range" min={0} max={500} step={1} value={level} onChange={(e) => onSet(Number(e.target.value))}
+        style={{ width: "100%", accentColor: broken ? "#ef4444" : "#0ea5e9", cursor: "pointer" }} />
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button onClick={() => onSet(MAX_LEVEL + 40)} style={{ flex: 1, background: "linear-gradient(135deg,#ef4444,#b91c1c)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>💥 Thử vỡ đập</button>
+        <button onClick={() => onSet(null)} disabled={!simOn} style={{ flex: 1, background: simOn ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 9, color: simOn ? "#cfe6f7" : "#5d83a3", padding: "8px 10px", fontWeight: 700, fontSize: 13, cursor: simOn ? "pointer" : "default" }}>↺ Về thực tế</button>
+      </div>
+      <p style={{ margin: "8px 2px 0", fontSize: 11, color: "#5d83a3" }}>Kéo thanh hoặc bấm "Thử vỡ đập" để xem hiệu ứng khi vượt mốc tràn {MAX_LEVEL}m. Chỉ ảnh hưởng hình ảnh, không đổi dữ liệu.</p>
     </div>
   );
 }

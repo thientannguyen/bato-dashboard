@@ -151,6 +151,7 @@ export async function fetchWorldCup() {
 
   const played = [];
   const upcoming = [];
+  const knockout = [];
   sorted.forEach((m) => {
     const ft = fullTime(m.score);
     const isGroup = !!m.group;
@@ -165,6 +166,18 @@ export async function fetchWorldCup() {
     };
     if (ft) played.push({ ...base, a: ft[0], b: ft[1], scorers: mapScorers(m.goals1, m.goals2) });
     else upcoming.push({ ...base, _date: m.date });
+    // Gom toàn bộ trận knock-out (đã đá + sắp tới) để dựng sơ đồ cây đấu loại.
+    if (!isGroup) {
+      knockout.push({
+        round: base.group,
+        home: base.home,
+        away: base.away,
+        kickoff_iso: base.kickoff_iso,
+        a: ft ? ft[0] : null,
+        b: ft ? ft[1] : null,
+        played: !!ft,
+      });
+    }
   });
 
   const matches = played.map((m, i) => ({
@@ -201,5 +214,8 @@ export async function fetchWorldCup() {
       country: f.country,
     }));
 
-  return { matches, fixtures };
+  return { matches, fixtures, knockout };
 }
+
+// Thứ tự các vòng knock-out để xếp cột trong sơ đồ cây.
+export const ROUND_ORDER = ["Vòng 32 đội", "Vòng 16 đội", "Tứ kết", "Bán kết", "Tranh hạng ba", "Chung kết"];
