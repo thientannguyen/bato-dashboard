@@ -252,11 +252,13 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <TzToggle tz={tz} machineTz={machineTz} onSet={chooseTz} />
             <button onClick={refreshAll} disabled={status === "loading"} style={{ background: status === "loading" ? "#1a4a63" : "linear-gradient(135deg,#0ea5e9,#06b6d4)", border: "none", borderRadius: 11, color: "#fff", padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: status === "loading" ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 14px rgba(14,165,233,.35)" }}>
               <RefreshCw size={16} style={{ animation: status === "loading" ? "spin 1s linear infinite" : "none" }} />
               {status === "loading" ? "Đang cập nhật..." : "Cập nhật kết quả"}
             </button>
+            </div>
             <StatusLine status={status} msg={statusMsg} lastUpdated={lastUpdated} tz={tz} />
           </div>
         </div>
