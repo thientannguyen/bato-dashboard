@@ -8,7 +8,8 @@ const MAX_LEVEL = 310; // mốc tràn/vỡ đập
 const STORE_KEY = "bato:matches";
 const FX_KEY = "bato:fixtures";
 const KO_KEY = "bato:knockout";
-const TZ = "America/Vancouver";
+const TZ_KEY = "bato:tz";
+const TZ = "America/Vancouver"; // múi giờ tham chiếu của giải
 const REFRESH_MS = 10 * 60 * 1000; // tự làm mới mỗi 10 phút
 const LIVE_WINDOW_MS = 130 * 60 * 1000; // coi là "đang đá" trong ~130 phút sau giờ bóng lăn
 
@@ -28,6 +29,20 @@ const storage = {
     } catch (e) {}
   },
 };
+
+// Phát hiện múi giờ của máy; nếu không xác định được thì rơi về giờ Vancouver.
+function detectMachineTz() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || TZ;
+  } catch (e) {
+    return TZ;
+  }
+}
+// Nhãn thân thiện cho múi giờ đang chọn.
+function tzNice(tz) {
+  if (tz === TZ) return "giờ Vancouver (PT)";
+  return `giờ máy (${String(tz).split("/").pop().replace(/_/g, " ")})`;
+}
 
 const fallbackMatches = [
   { id: 1, label: "Mexico vs Nam Phi", home: "Mexico", away: "Nam Phi", a: 2, b: 0, group: "A", stage: "group", motm: "", scorers: [] },
@@ -56,6 +71,9 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const machineTz = useMemo(detectMachineTz, []);
+  const [tz, setTz] = useState(machineTz); // mặc định giờ máy (hoặc Vancouver nếu không rõ)
+  const chooseTz = (z) => { setTz(z); storage.set(TZ_KEY, z); };
   const [simLevel, setSimLevel] = useState(null);
   // Cổng bí mật: thanh mô phỏng vỡ đập chỉ hiện khi URL có ?vodap hoặc #vodap.
   const [showSim] = useState(() => {
@@ -91,6 +109,12 @@ export default function Dashboard() {
         if (Array.isArray(sv.knockout)) setKnockout(sv.knockout);
       }
     } catch (e) {}
+    try {
+      const rt = storage.get(TZ_KEY);
+      // Chỉ nhận lại lựa chọn hợp lệ: giờ Vancouver hoặc đúng giờ máy hiện tại.
+      if (rt && rt.value && (rt.value === TZ || rt.value === machineTz)) setTz(rt.value);
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Lấy kết quả + lịch từ openfootball/worldcup.json (miễn phí, không cần API key).
@@ -228,11 +252,12 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+            <TzToggle tz={tz} machineTz={machineTz} onSet={chooseTz} />
             <button onClick={refreshAll} disabled={status === "loading"} style={{ background: status === "loading" ? "#1a4a63" : "linear-gradient(135deg,#0ea5e9,#06b6d4)", border: "none", borderRadius: 11, color: "#fff", padding: "11px 18px", fontWeight: 700, fontSize: 14, cursor: status === "loading" ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 14px rgba(14,165,233,.35)" }}>
               <RefreshCw size={16} style={{ animation: status === "loading" ? "spin 1s linear infinite" : "none" }} />
               {status === "loading" ? "Đang cập nhật..." : "Cập nhật kết quả"}
             </button>
-            <StatusLine status={status} msg={statusMsg} lastUpdated={lastUpdated} />
+            <StatusLine status={status} msg={statusMsg} lastUpdated={lastUpdated} tz={tz} />
           </div>
         </div>
 
@@ -274,13 +299,13 @@ export default function Dashboard() {
         <Reveal delay={120}><NextMatchCountdown match={nextMatch} now={now} /></Reveal>
 
         {/* Fixtures */}
-        <Reveal delay={180}><FixturesSection fixtures={fixtures} status={fxStatus} now={now} /></Reveal>
+        <Reveal delay={180}><FixturesSection fixtures={fixtures} status={fxStatus} now={now} tz={tz} /></Reveal>
 
         {/* Standings */}
         <Reveal delay={240}><StandingsSection standings={standings} /></Reveal>
 
         {/* Sơ đồ cây đấu loại */}
-        <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} /></Reveal>
+        <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} tz={tz} /></Reveal>
 
         {/* Digit tracker */}
         <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} narrow={narrow} /></Reveal>
@@ -359,24 +384,44 @@ export default function Dashboard() {
   );
 }
 
-function vanDate(d) {
-  return d.toLocaleDateString("en-CA", { timeZone: TZ }); // YYYY-MM-DD theo giờ Vancouver
+function tzDate(d, tz) {
+  return d.toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD theo múi giờ đang chọn
 }
-function fxDayLabel(iso) {
+function fxDayLabel(iso, tz) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
-  const ds = vanDate(d);
-  if (ds === vanDate(new Date())) return "Hôm nay";
-  if (ds === vanDate(new Date(Date.now() + 86400000))) return "Ngày mai";
-  return d.toLocaleDateString("vi-VN", { timeZone: TZ, weekday: "short", day: "2-digit", month: "2-digit" });
+  const ds = tzDate(d, tz);
+  if (ds === tzDate(new Date(), tz)) return "Hôm nay";
+  if (ds === tzDate(new Date(Date.now() + 86400000), tz)) return "Ngày mai";
+  return d.toLocaleDateString("vi-VN", { timeZone: tz, weekday: "short", day: "2-digit", month: "2-digit" });
 }
-function fxTimeLabel(f) {
+function fxTimeLabel(f, tz) {
   if (f.kickoff_iso) {
     const d = new Date(f.kickoff_iso);
-    if (!isNaN(d)) return d.toLocaleString("vi-VN", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    if (!isNaN(d)) return d.toLocaleString("vi-VN", { timeZone: tz, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
   return f.kickoff_text || "Chưa rõ giờ";
+}
+
+// Nút chọn múi giờ hiển thị: giờ máy vs giờ Vancouver.
+// Ẩn khi giờ máy trùng giờ Vancouver (hoặc không phát hiện được) — lúc đó luôn dùng Vancouver.
+function TzToggle({ tz, machineTz, onSet }) {
+  const opts = [{ key: machineTz, label: "Giờ máy" }, { key: TZ, label: "Giờ Vancouver" }];
+  const uniq = opts.filter((o, i) => opts.findIndex((x) => x.key === o.key) === i);
+  if (uniq.length < 2) return null;
+  return (
+    <div style={{ display: "flex", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, padding: 2 }}>
+      {uniq.map((o) => {
+        const active = tz === o.key;
+        return (
+          <button key={o.key} onClick={() => onSet(o.key)} title={o.key} style={{ border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11.5, fontWeight: 700, padding: "5px 11px", background: active ? "linear-gradient(135deg,#0ea5e9,#06b6d4)" : "transparent", color: active ? "#fff" : "#9cc2dd" }}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // Trận coi như "đang đá" khi giờ bóng lăn đã qua nhưng chưa quá ~130 phút và chưa có kết quả.
@@ -387,7 +432,7 @@ function isLive(f, now) {
   return now >= t && now < t + LIVE_WINDOW_MS;
 }
 
-function FixturesSection({ fixtures, status, now }) {
+function FixturesSection({ fixtures, status, now, tz }) {
   const liveCount = fixtures.filter((f) => isLive(f, now)).length;
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
@@ -395,7 +440,7 @@ function FixturesSection({ fixtures, status, now }) {
         <CalendarClock size={16} color="#38bdf8" /> Trận sắp tới — hôm nay & ngày mai
         {liveCount > 0 && <LiveBadge label={`${liveCount} trận đang đá`} />}
       </h3>
-      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Giờ hiển thị theo múi giờ Vancouver (PT). Tự làm mới mỗi 10 phút, hoặc bấm "Cập nhật kết quả".</p>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Giờ hiển thị theo {tzNice(tz)}. Tự làm mới mỗi 10 phút, hoặc bấm "Cập nhật kết quả".</p>
       {fixtures.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: "#5d83a3", fontStyle: "italic" }}>
           {status === "loading" ? "Đang tải lịch thi đấu..." : status === "error" ? "Không lấy được lịch, thử lại sau." : "Chưa có lịch — bấm \"Cập nhật kết quả\" để lấy các trận hôm nay và ngày mai."}
@@ -404,7 +449,7 @@ function FixturesSection({ fixtures, status, now }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 12 }}>
           {fixtures.map((f) => {
             const live = isLive(f, now);
-            const day = fxDayLabel(f.kickoff_iso);
+            const day = fxDayLabel(f.kickoff_iso, tz);
             const venue = [f.stadium, f.city, f.country].filter(Boolean).join(", ");
             return (
               <div key={f.id} className="lift" style={{ background: live ? "rgba(239,68,68,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${live ? "rgba(239,68,68,.45)" : "rgba(255,255,255,.08)"}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -414,7 +459,7 @@ function FixturesSection({ fixtures, status, now }) {
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#e2f1ff" }}>{flag(f.home)} {f.home} <span style={{ color: "#5d83a3", fontWeight: 400 }}>vs</span> {f.away} {flag(f.away)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#9cc2dd" }}>
-                  <Clock size={13} color="#38bdf8" /> {fxTimeLabel(f)}
+                  <Clock size={13} color="#38bdf8" /> {fxTimeLabel(f, tz)}
                 </div>
                 {venue && (
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12.5, color: "#9cc2dd" }}>
@@ -442,7 +487,7 @@ function LiveBadge({ label }) {
 
 // Sơ đồ cây đấu loại trực tiếp — xếp các vòng thành cột, cuộn ngang trên mobile.
 // Mặc định thu gọn khi chưa có trận knock-out nào đá; tự mở khi vòng loại trực tiếp bắt đầu.
-function BracketSection({ knockout, now, narrow }) {
+function BracketSection({ knockout, now, narrow, tz }) {
   const rounds = useMemo(() => {
     const by = {};
     (knockout || []).forEach((m) => {
@@ -488,13 +533,13 @@ function BracketSection({ knockout, now, narrow }) {
         </p>
       ) : (
         <>
-          <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi cột là một vòng. Trận đã đá hiện tỉ số, trận chưa đá hiện giờ bóng lăn (giờ Vancouver).</p>
+          <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi cột là một vòng. Trận đã đá hiện tỉ số, trận chưa đá hiện giờ bóng lăn ({tzNice(tz)}).</p>
           <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 6 }}>
             {rounds.map(({ round, matches }) => (
               <div key={round} style={{ minWidth: narrow ? 220 : 240, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: 13, textAlign: "center", padding: "4px 0", background: "rgba(167,139,250,.1)", borderRadius: 8 }}>{round}</div>
                 {matches.map((m, i) => (
-                  <BracketMatch key={i} m={m} now={now} />
+                  <BracketMatch key={i} m={m} now={now} tz={tz} />
                 ))}
               </div>
             ))}
@@ -505,7 +550,7 @@ function BracketSection({ knockout, now, narrow }) {
   );
 }
 
-function BracketMatch({ m, now }) {
+function BracketMatch({ m, now, tz }) {
   const live = isLive(m, now);
   const hWin = m.played && m.a > m.b;
   const aWin = m.played && m.b > m.a;
@@ -521,7 +566,7 @@ function BracketMatch({ m, now }) {
       <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
       {row(m.away, m.b, aWin)}
       <div style={{ fontSize: 10.5, color: live ? "#fca5a5" : "#5d83a3", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
-        {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }) : "Chưa rõ giờ")}
+        {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }, tz) : "Chưa rõ giờ")}
       </div>
     </div>
   );
@@ -695,8 +740,8 @@ function StandingsSection({ standings }) {
   );
 }
 
-function StatusLine({ status, msg, lastUpdated }) {
-  const timeText = lastUpdated ? new Date(lastUpdated).toLocaleString("vi-VN", { timeZone: TZ }) : null;
+function StatusLine({ status, msg, lastUpdated, tz }) {
+  const timeText = lastUpdated ? new Date(lastUpdated).toLocaleString("vi-VN", { timeZone: tz }) : null;
   const Last = () => timeText
     ? <span style={{ fontSize: 12, color: "#5d83a3" }}>Cập nhật lần cuối: {timeText}</span>
     : <span style={{ fontSize: 12, color: "#5d83a3" }}>Chưa cập nhật</span>;
