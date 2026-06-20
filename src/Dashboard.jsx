@@ -319,7 +319,7 @@ export default function Dashboard() {
                   <YAxis tick={{ fill: "#7da8c9", fontSize: 12 }} unit="m" />
                   <Tooltip contentStyle={{ background: "#0d2137", border: "1px solid rgba(14,165,233,.4)", borderRadius: 10, color: "#e2f1ff" }} labelFormatter={(d) => `Ngày ${d}`} formatter={(v, _n, p) => [`${v} m`, `Mực nước (${p.payload.score})`]} />
                   <ReferenceLine y={MAX_LEVEL} stroke="#f97316" strokeDasharray="5 4" strokeWidth={1.5} label={{ value: `Mốc tràn ${MAX_LEVEL}m`, position: "insideTopRight", fill: "#fb923c", fontSize: 11, fontWeight: 700 }} />
-                  <Area type="monotone" dataKey="level" stroke="#0ea5e9" strokeWidth={3} fill="url(#waterGrad)" dot={<WaterDot />} activeDot={<WaterActiveDot />} />
+                  <Area type="monotone" dataKey="level" stroke="#0ea5e9" strokeWidth={3} fill="url(#waterGrad)" dot={<WaterDot narrow={narrow} />} activeDot={<WaterActiveDot narrow={narrow} />} />
                 </AreaChart>
               </ResponsiveContainer>
               </div>
@@ -1035,15 +1035,16 @@ function Confetti() {
 }
 
 // Điểm trên biểu đồ: đỏ khi mực nước vượt mốc tràn (vỡ đập), xanh dương khi bình thường.
-function WaterDot({ cx, cy, payload }) {
+function WaterDot({ cx, cy, payload, narrow }) {
   if (cx == null || cy == null) return null;
   const broke = payload && payload.level > MAX_LEVEL;
-  return <circle cx={cx} cy={cy} r={broke ? 5 : 4} fill={broke ? "#ef4444" : "#06b6d4"} stroke={broke ? "#fecaca" : "none"} strokeWidth={broke ? 1.5 : 0} />;
+  if (broke) return <circle cx={cx} cy={cy} r={narrow ? 6 : 5} fill="#ef4444" stroke="#fff" strokeWidth={narrow ? 2 : 1.5} />;
+  return <circle cx={cx} cy={cy} r={narrow ? 3 : 4} fill="#06b6d4" />;
 }
-function WaterActiveDot({ cx, cy, payload }) {
+function WaterActiveDot({ cx, cy, payload, narrow }) {
   if (cx == null || cy == null) return null;
   const broke = payload && payload.level > MAX_LEVEL;
-  return <circle cx={cx} cy={cy} r={6} fill={broke ? "#ef4444" : "#22a7e0"} stroke="#fff" strokeWidth={1.5} />;
+  return <circle cx={cx} cy={cy} r={narrow ? 7 : 6} fill={broke ? "#ef4444" : "#22a7e0"} stroke="#fff" strokeWidth={2} />;
 }
 
 function Stat({ icon, label, value, accent }) {
