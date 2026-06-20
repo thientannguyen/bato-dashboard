@@ -178,7 +178,7 @@ export default function Dashboard() {
   // Mô phỏng: nếu simLevel != null thì đập hiển thị theo mức mô phỏng (không đụng dữ liệu thật).
   const dispLevel = showSim && simLevel != null ? simLevel : realLevel;
   const fillPct = Math.min(dispLevel / MAX_LEVEL, 1);
-  const broken = dispLevel >= MAX_LEVEL;
+  const broken = dispLevel > MAX_LEVEL; // chỉ vỡ khi vượt mốc tràn (trên 310m)
 
   const verified = useMemo(() => {
     const seen = {};
@@ -303,9 +303,10 @@ export default function Dashboard() {
               <Stat icon={delta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />} label="So với trận trước" value={<CountUp value={delta} suffix=" m" signed />} accent={delta >= 0 ? "#22c55e" : "#f87171"} />
               <Stat icon={<Droplet size={18} />} label="Tổng bàn / số trận" value={<><CountUp value={current?.cumGoals ?? 0} /> / <CountUp value={data.length} /></>} accent="#a78bfa" />
             </div>
-            <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: "18px 16px 8px" }}>
+            <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: "18px 16px 8px", flex: 1, display: "flex", flexDirection: "column" }}>
               <h3 style={{ margin: "0 0 12px 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Diễn biến mực nước</h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <div style={{ flex: 1, minHeight: 220 }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
@@ -318,9 +319,10 @@ export default function Dashboard() {
                   <YAxis tick={{ fill: "#7da8c9", fontSize: 12 }} unit="m" />
                   <Tooltip contentStyle={{ background: "#0d2137", border: "1px solid rgba(14,165,233,.4)", borderRadius: 10, color: "#e2f1ff" }} labelFormatter={(d) => `Ngày ${d}`} formatter={(v, _n, p) => [`${v} m`, `Mực nước (${p.payload.score})`]} />
                   <ReferenceLine y={MAX_LEVEL} stroke="#f97316" strokeDasharray="5 4" strokeWidth={1.5} label={{ value: `Mốc tràn ${MAX_LEVEL}m`, position: "insideTopRight", fill: "#fb923c", fontSize: 11, fontWeight: 700 }} />
-                  <Area type="monotone" dataKey="level" stroke="#0ea5e9" strokeWidth={3} fill="url(#waterGrad)" dot={{ fill: "#06b6d4", r: 4 }} activeDot={{ r: 6 }} />
+                  <Area type="monotone" dataKey="level" stroke="#0ea5e9" strokeWidth={3} fill="url(#waterGrad)" dot={<WaterDot />} activeDot={<WaterActiveDot />} />
                 </AreaChart>
               </ResponsiveContainer>
+              </div>
             </div>
           </div>
         </div>
@@ -1030,6 +1032,18 @@ function Confetti() {
       ))}
     </div>
   );
+}
+
+// Điểm trên biểu đồ: đỏ khi mực nước vượt mốc tràn (vỡ đập), xanh dương khi bình thường.
+function WaterDot({ cx, cy, payload }) {
+  if (cx == null || cy == null) return null;
+  const broke = payload && payload.level > MAX_LEVEL;
+  return <circle cx={cx} cy={cy} r={broke ? 5 : 4} fill={broke ? "#ef4444" : "#06b6d4"} stroke={broke ? "#fecaca" : "none"} strokeWidth={broke ? 1.5 : 0} />;
+}
+function WaterActiveDot({ cx, cy, payload }) {
+  if (cx == null || cy == null) return null;
+  const broke = payload && payload.level > MAX_LEVEL;
+  return <circle cx={cx} cy={cy} r={6} fill={broke ? "#ef4444" : "#22a7e0"} stroke="#fff" strokeWidth={1.5} />;
 }
 
 function Stat({ icon, label, value, accent }) {
