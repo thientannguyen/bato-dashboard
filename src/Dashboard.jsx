@@ -824,13 +824,14 @@ const JETS = [
 
 function DamVisual({ fillPct, level, broken }) {
   const waterTop = 100 - fillPct * 100;
-  // Màu nước theo mức: vỡ đập -> đỏ dữ, gần tràn -> xanh ngọc, thấp -> hổ phách, còn lại -> xanh dương.
+  // Màu nước leo thang theo mức nguy hiểm: thấp -> xanh nhạt, bình thường -> xanh dương,
+  // sắp tràn -> cam cảnh báo, vỡ đập -> đỏ. Càng gần mốc tràn màu càng nóng.
   const water = broken
     ? { from: "#ef4444", to: "#991b1b", crest: "#f87171", glow: "239,68,68" }
     : fillPct >= 0.85
-    ? { from: "#10b981", to: "#047857", crest: "#34d399", glow: "16,185,129" }
+    ? { from: "#f97316", to: "#c2410c", crest: "#fb923c", glow: "249,115,22" }
     : fillPct <= 0.25
-    ? { from: "#f59e0b", to: "#b45309", crest: "#fbbf24", glow: "245,158,11" }
+    ? { from: "#7dd3fc", to: "#38bdf8", crest: "#bae6fd", glow: "125,211,252" }
     : { from: "#0ea5e9", to: "#0369a1", crest: "#22a7e0", glow: "14,165,233" };
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, position: "relative", overflow: "hidden" }}>
