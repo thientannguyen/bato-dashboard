@@ -70,6 +70,8 @@ export default function Dashboard() {
   const [fxStatus, setFxStatus] = useState("idle");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [histGroup, setHistGroup] = useState("all"); // lọc lịch sử theo bảng/vòng
+  const [histTeam, setHistTeam] = useState(""); // lọc lịch sử theo tên đội
   const [now, setNow] = useState(() => Date.now());
   const machineTz = useMemo(detectMachineTz, []);
   const [tz, setTz] = useState(machineTz); // mặc định giờ máy (hoặc Vancouver nếu không rõ)
@@ -236,6 +238,32 @@ export default function Dashboard() {
       .sort((a, b) => new Date(a.kickoff_iso) - new Date(b.kickoff_iso))[0] || null;
   }, [fixtures, now]);
 
+  // Thống kê thú vị: trung bình bàn/trận, trận nhiều bàn nhất, số trận hòa & sạch lưới.
+  const funStats = useMemo(() => {
+    if (!data.length) return null;
+    const totalGoals = data.reduce((s, m) => s + m.goals, 0);
+    let top = data[0];
+    data.forEach((m) => { if (m.goals > top.goals) top = m; });
+    const draws = data.filter((m) => m.a === m.b).length;
+    const cleanSheets = data.filter((m) => m.a === 0 || m.b === 0).length;
+    return { avg: totalGoals / data.length, top, draws, cleanSheets, count: data.length };
+  }, [data]);
+
+  // Bộ lọc lịch sử: danh sách bảng/vòng hiện có + danh sách trận sau khi lọc.
+  const groupOptions = useMemo(() => {
+    const seen = [];
+    data.forEach((m) => { if (m.group && !seen.includes(m.group)) seen.push(m.group); });
+    return seen;
+  }, [data]);
+  const filteredHistory = useMemo(() => {
+    const q = histTeam.trim().toLowerCase();
+    return data.filter((m) => {
+      if (histGroup !== "all" && m.group !== histGroup) return false;
+      if (q && !m.home.toLowerCase().includes(q) && !m.away.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [data, histGroup, histTeam]);
+
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0a1628 0%,#0d2137 50%,#0a1f33 100%)", color: "#e2f1ff", fontFamily: "system-ui,-apple-system,sans-serif", padding: narrow ? "14px" : "24px" }}>
       {broken && <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 50, background: "radial-gradient(ellipse at center, transparent 35%, rgba(220,38,38,.55) 100%)", animation: "dangerFlash 0.9s ease-in-out infinite" }} />}
@@ -316,10 +344,28 @@ export default function Dashboard() {
         {/* Vua phá lưới */}
         <Reveal delay={360}><TopScorersSection scorers={topScorers} /></Reveal>
 
+        {/* Thống kê thú vị */}
+        <Reveal delay={390}><FunStatsSection stats={funStats} /></Reveal>
+
         {/* Table */}
         <Reveal delay={420}>
         <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Lịch sử trận đấu</h3>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Lịch sử trận đấu</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select value={histGroup} onChange={(e) => setHistGroup(e.target.value)} style={selectStyle}>
+                <option value="all">Tất cả bảng/vòng</option>
+                {groupOptions.map((g) => <option key={g} value={g}>{/^[A-L]$/.test(g) ? `Bảng ${g}` : g}</option>)}
+              </select>
+              <input value={histTeam} onChange={(e) => setHistTeam(e.target.value)} placeholder="Tìm đội..." style={{ ...selectStyle, minWidth: 120 }} />
+              {(histGroup !== "all" || histTeam) && (
+                <button onClick={() => { setHistGroup("all"); setHistTeam(""); }} style={{ background: "transparent", border: "1px solid rgba(255,255,255,.15)", borderRadius: 8, color: "#9cc2dd", fontSize: 12, fontWeight: 600, padding: "6px 10px", cursor: "pointer" }}>Xóa lọc</button>
+              )}
+            </div>
+          </div>
+          {filteredHistory.length === 0 && (
+            <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5d83a3", fontStyle: "italic" }}>Không có trận nào khớp bộ lọc.</p>
+          )}
           <div style={{ maxHeight: 320, overflowY: "auto", overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
@@ -328,7 +374,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((m) => {
+                {filteredHistory.map((m) => {
                   const open = expanded === m.id;
                   return (
                     <Fragment key={m.id}>
@@ -356,7 +402,7 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
-          <p style={{ margin: "12px 2px 0", fontSize: 12, color: "#5d83a3" }}>Mực nước = (tổng bàn cộng dồn ÷ số trận) × 100. Bấm vào một trận để xem người ghi bàn, phút và điểm hai đội.</p>
+          <p style={{ margin: "12px 2px 0", fontSize: 12, color: "#5d83a3" }}>Hiển thị {filteredHistory.length}/{data.length} trận. Mực nước = (tổng bàn cộng dồn ÷ số trận) × 100. Bấm vào một trận để xem người ghi bàn, phút và điểm hai đội.</p>
         </div>
         </Reveal>
       </div>
@@ -621,6 +667,34 @@ function TopScorersSection({ scorers }) {
             <span style={{ flex: 1, fontWeight: 600, color: "#e2f1ff", fontSize: 13 }}>{s.player}</span>
             <span style={{ fontSize: 12, color: "#9cc2dd" }}>{flag(s.team)} {s.team}</span>
             <span style={{ fontWeight: 800, color: "#fbbf24", fontSize: 13.5, minWidth: 46, textAlign: "right" }}>{s.goals} bàn</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FunStatsSection({ stats }) {
+  if (!stats) return null;
+  const items = [
+    { icon: <Droplet size={18} />, label: "TB bàn / trận", value: stats.avg.toFixed(2), sub: `≈ ${Math.round(stats.avg * 100)}m nước mỗi trận`, accent: "#0ea5e9" },
+    { icon: <TrendingUp size={18} />, label: "Trận nhiều bàn nhất", value: `${stats.top.goals} bàn`, sub: `${flag(stats.top.home)} ${stats.top.home} ${stats.top.score} ${stats.top.away} ${flag(stats.top.away)}`, accent: "#fbbf24" },
+    { icon: <CircleDot size={18} />, label: "Trận hòa", value: stats.draws, sub: `trên ${stats.count} trận đã đá`, accent: "#a78bfa" },
+    { icon: <CheckCircle size={18} />, label: "Trận có sạch lưới", value: stats.cleanSheets, sub: "ít nhất một đội không thủng lưới", accent: "#22c55e" },
+  ];
+  return (
+    <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
+      <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}><Gauge size={16} color="#38bdf8" /> Thống kê thú vị</h3>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Tổng hợp từ các trận đã đá.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 12 }}>
+        {items.map((it) => (
+          <div key={it.label} className="lift" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: it.accent, marginBottom: 8 }}>
+              {it.icon}
+              <span style={{ fontSize: 11, color: "#7da8c9", fontWeight: 600 }}>{it.label}</span>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1.1 }}>{it.value}</div>
+            <div style={{ fontSize: 11.5, color: "#9cc2dd", marginTop: 4 }}>{it.sub}</div>
           </div>
         ))}
       </div>
@@ -970,6 +1044,7 @@ function Stat({ icon, label, value, accent }) {
   );
 }
 
+const selectStyle = { background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, color: "#e2f1ff", fontSize: 12.5, fontWeight: 600, padding: "6px 10px", cursor: "pointer", outline: "none" };
 const th = { padding: "6px 8px", fontWeight: 600, fontSize: 11 };
 const td = { padding: "8px" };
 const stTh = { padding: "4px 5px", fontWeight: 600, fontSize: 10, textAlign: "center" };
