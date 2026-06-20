@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
-import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceLine } from "recharts";
 import { Droplet, TrendingUp, TrendingDown, Waves, Gauge, RefreshCw, CheckCircle, AlertCircle, ChevronDown, CircleDot, Trophy, CalendarClock, MapPin, Clock } from "lucide-react";
 import { fetchWorldCup, flag, ROUND_ORDER } from "./wc-data.js";
 
@@ -289,6 +289,7 @@ export default function Dashboard() {
                   <XAxis dataKey="day" tick={{ fill: "#7da8c9", fontSize: 12 }} tickFormatter={(d) => `Ngày ${d}`} />
                   <YAxis tick={{ fill: "#7da8c9", fontSize: 12 }} unit="m" />
                   <Tooltip contentStyle={{ background: "#0d2137", border: "1px solid rgba(14,165,233,.4)", borderRadius: 10, color: "#e2f1ff" }} labelFormatter={(d) => `Ngày ${d}`} formatter={(v, _n, p) => [`${v} m`, `Mực nước (${p.payload.score})`]} />
+                  <ReferenceLine y={MAX_LEVEL} stroke="#f97316" strokeDasharray="5 4" strokeWidth={1.5} label={{ value: `Mốc tràn ${MAX_LEVEL}m`, position: "insideTopRight", fill: "#fb923c", fontSize: 11, fontWeight: 700 }} />
                   <Area type="monotone" dataKey="level" stroke="#0ea5e9" strokeWidth={3} fill="url(#waterGrad)" dot={{ fill: "#06b6d4", r: 4 }} activeDot={{ r: 6 }} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -374,6 +375,7 @@ export default function Dashboard() {
         @keyframes alertPulse { 0%,100%{opacity:1;transform:scale(1) rotate(-1deg)} 50%{opacity:.65;transform:scale(1.09) rotate(1deg)} }
         @keyframes dangerFlash { 0%,100%{opacity:.12} 50%{opacity:.5} }
         @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
+        @keyframes warnPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
         @keyframes jet { 0%{transform:translate(0,0) scale(1);opacity:.95} 100%{transform:translate(var(--jx),var(--jy)) scale(.3);opacity:0} }
         @keyframes crackDraw { from{stroke-dashoffset:220} to{stroke-dashoffset:0} }
         .lift{transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
@@ -824,6 +826,7 @@ const JETS = [
 
 function DamVisual({ fillPct, level, broken }) {
   const waterTop = 100 - fillPct * 100;
+  const nearFull = !broken && fillPct >= 0.85; // vùng cam: sắp tràn, cảnh báo trước khi vỡ
   // Màu nước leo thang theo mức nguy hiểm: thấp -> xanh nhạt, bình thường -> xanh dương,
   // sắp tràn -> cam cảnh báo, vỡ đập -> đỏ. Càng gần mốc tràn màu càng nóng.
   const water = broken
@@ -836,6 +839,11 @@ function DamVisual({ fillPct, level, broken }) {
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, position: "relative", overflow: "hidden" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Đập thủy điện BA TO</h3>
+      {nearFull && (
+        <div style={{ marginBottom: 12, padding: "9px 12px", borderRadius: 10, background: "rgba(249,115,22,.15)", border: "1px solid rgba(249,115,22,.5)", color: "#fdba74", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, animation: "warnPulse 1.8s ease-in-out infinite" }}>
+          ⚠️ Sắp tràn — mực nước {level}m đã gần mốc {MAX_LEVEL}m
+        </div>
+      )}
       <div style={{ position: "relative", height: 360, borderRadius: 12, overflow: "hidden", background: "linear-gradient(#1a3a52,#13293d)", border: `2px solid ${broken ? "rgba(239,68,68,.85)" : "rgba(255,255,255,.1)"}`, boxShadow: broken ? "0 0 30px rgba(239,68,68,.5)" : "none", animation: broken ? "shake .4s ease-in-out infinite" : "none" }}>
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: `${waterTop}%`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: `linear-gradient(180deg,${water.from},${water.to})`, overflow: "hidden", boxShadow: `0 0 40px rgba(${water.glow},.4)` }}>
           <div style={{ position: "absolute", top: -8, left: 0, width: "200%", height: 16, animation: "wave 4s linear infinite" }}>
