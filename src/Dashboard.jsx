@@ -772,6 +772,12 @@ function TeamPts({ name, info }) {
 
 function StandingsSection({ standings }) {
   const keys = Object.keys(standings);
+  // WC 2026: 2 đội đầu mỗi bảng + 8 đội hạng ba tốt nhất đi tiếp (tổng 32 đội).
+  const bestThirds = (() => {
+    const thirds = keys.map((g) => standings[g][2]).filter(Boolean);
+    thirds.sort((x, y) => y.Pts - x.Pts || y.GD - x.GD || y.GF - x.GF || x.team.localeCompare(y.team));
+    return new Set(thirds.slice(0, 8).map((t) => t.team));
+  })();
   if (keys.length === 0) {
     return (
       <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
@@ -783,7 +789,7 @@ function StandingsSection({ standings }) {
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}><Trophy size={16} color="#fbbf24" /> Bảng xếp hạng</h3>
-      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Tự tính từ kết quả vòng bảng — thắng 3đ, hòa 1đ. Xếp theo Điểm → Hiệu số → Bàn thắng. 2 đội đầu (xanh) đi tiếp.</p>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Tự tính từ kết quả vòng bảng — thắng 3đ, hòa 1đ. Xếp theo Điểm → Hiệu số → Bàn thắng. 2 đội đầu mỗi bảng (xanh lá) + 8 đội hạng ba tốt nhất (xanh dương) đi tiếp — tổng 32 đội vào vòng loại trực tiếp.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
         {keys.map((g) => (
           <div key={g} className="lift" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: 12 }}>
@@ -799,10 +805,11 @@ function StandingsSection({ standings }) {
               <tbody>
                 {standings[g].map((t, idx) => {
                   const qualify = idx < 2;
+                  const thirdIn = idx === 2 && bestThirds.has(t.team); // hạng ba đi tiếp
                   return (
                     <tr key={t.team} style={{ borderTop: "1px solid rgba(255,255,255,.05)" }}>
                       <td style={{ ...stTd, textAlign: "left" }}>
-                        <span style={{ display: "inline-block", width: 16, height: 16, lineHeight: "16px", textAlign: "center", borderRadius: 4, fontSize: 10, fontWeight: 700, background: qualify ? "rgba(34,197,94,.25)" : "rgba(255,255,255,.06)", color: qualify ? "#86efac" : "#7da8c9" }}>{idx + 1}</span>
+                        <span title={thirdIn ? "Hạng ba có thành tích tốt — đi tiếp" : qualify ? "Đi tiếp" : undefined} style={{ display: "inline-block", width: 16, height: 16, lineHeight: "16px", textAlign: "center", borderRadius: 4, fontSize: 10, fontWeight: 700, background: qualify ? "rgba(34,197,94,.25)" : thirdIn ? "rgba(14,165,233,.28)" : "rgba(255,255,255,.06)", color: qualify ? "#86efac" : thirdIn ? "#7dd3fc" : "#7da8c9" }}>{idx + 1}</span>
                       </td>
                       <td style={{ ...stTd, textAlign: "left", color: "#e2f1ff", fontWeight: 600 }}>{flag(t.team)} {t.team}</td>
                       <td style={stTd}>{t.P}</td><td style={stTd}>{t.W}</td><td style={stTd}>{t.D}</td><td style={stTd}>{t.L}</td>
@@ -939,7 +946,7 @@ function DamVisual({ fillPct, level, broken }) {
         {[0, 100, 200, 300].map((mk) => (
           <div key={mk} style={{ position: "absolute", left: 0, right: 0, bottom: `${(mk / MAX_LEVEL) * 100}%`, borderTop: "1px dashed rgba(255,255,255,.18)", fontSize: 10, color: "#9cc2dd", paddingLeft: 6 }}>{mk}m</div>
         ))}
-        <div style={{ position: "absolute", right: 10, top: `calc(${waterTop}% - 12px)`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: water.from, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
+        <div style={{ position: "absolute", right: 10, top: `clamp(6px, calc(${waterTop}% - 12px), calc(100% - 30px))`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: water.from, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#3a5a72,#2a4358)" }} />
         <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#2a4358,#3a5a72)" }} />
         {broken && (
