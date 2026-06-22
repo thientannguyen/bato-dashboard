@@ -4,7 +4,7 @@ import { Droplet, TrendingUp, TrendingDown, Waves, Gauge, RefreshCw, CheckCircle
 import { fetchWorldCup, flag, ROUND_ORDER } from "./wc-data.js";
 
 // Mực nước = (tổng bàn thắng cộng dồn / số trận) * 100
-const MAX_LEVEL = 310; // mốc tràn/vỡ đập
+const MAX_LEVEL = 300; // mốc tràn/vỡ đập
 const STORE_KEY = "bato:matches";
 const FX_KEY = "bato:fixtures";
 const KO_KEY = "bato:knockout";
@@ -943,7 +943,7 @@ function DamVisual({ fillPct, level, broken }) {
             <div key={i} style={{ position: "absolute", bottom: 0, left: b.left, width: b.size, height: b.size, borderRadius: "50%", background: "rgba(255,255,255,.55)", animation: `bubble ${b.dur}s ease-in ${b.delay}s infinite` }} />
           ))}
         </div>
-        {[0, 100, 200, 300].map((mk) => (
+        {[0, 100, 200].map((mk) => (
           <div key={mk} style={{ position: "absolute", left: 0, right: 0, bottom: `${(mk / MAX_LEVEL) * 100}%`, borderTop: "1px dashed rgba(255,255,255,.18)", fontSize: 10, color: "#9cc2dd", paddingLeft: 6 }}>{mk}m</div>
         ))}
         <div style={{ position: "absolute", right: 10, top: `clamp(6px, calc(${waterTop}% - 12px), calc(100% - 30px))`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: water.from, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
