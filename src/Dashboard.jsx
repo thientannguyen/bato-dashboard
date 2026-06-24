@@ -338,7 +338,7 @@ export default function Dashboard() {
         <Reveal delay={240}><StandingsSection standings={standings} /></Reveal>
 
         {/* Sơ đồ cây đấu loại */}
-        <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} tz={tz} /></Reveal>
+        <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} tz={tz} standings={standings} /></Reveal>
 
         {/* Digit tracker */}
         <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} narrow={narrow} /></Reveal>
@@ -539,7 +539,19 @@ function LiveBadge({ label }) {
 
 // Sơ đồ cây đấu loại trực tiếp — xếp các vòng thành cột, cuộn ngang trên mobile.
 // Mặc định thu gọn khi chưa có trận knock-out nào đá; tự mở khi vòng loại trực tiếp bắt đầu.
-function BracketSection({ knockout, now, narrow, tz }) {
+// Đổi mã chỗ "1F"/"2C" thành tên đội thật lấy từ bảng xếp hạng tự tính.
+// provisional = bảng đó chưa đá xong (thứ hạng còn có thể đổi).
+function resolveCode(raw, standings) {
+  const m = /^([12])([A-L])$/.exec(String(raw || "").trim());
+  if (!m || !standings) return null;
+  const pos = Number(m[1]) - 1;
+  const table = standings[m[2]];
+  if (!table || !table[pos]) return null;
+  const done = table.length === 4 && table.every((t) => t.P === 3);
+  return { name: table[pos].team, provisional: !done };
+}
+
+function BracketSection({ knockout, now, narrow, tz, standings }) {
   const rounds = useMemo(() => {
     const by = {};
     (knockout || []).forEach((m) => {
@@ -591,7 +603,7 @@ function BracketSection({ knockout, now, narrow, tz }) {
               <div key={round} style={{ minWidth: narrow ? 220 : 240, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: 13, textAlign: "center", padding: "4px 0", background: "rgba(167,139,250,.1)", borderRadius: 8 }}>{round}</div>
                 {matches.map((m, i) => (
-                  <BracketMatch key={i} m={m} now={now} tz={tz} />
+                  <BracketMatch key={i} m={m} now={now} tz={tz} standings={standings} />
                 ))}
               </div>
             ))}
@@ -602,21 +614,27 @@ function BracketSection({ knockout, now, narrow, tz }) {
   );
 }
 
-function BracketMatch({ m, now, tz }) {
+function BracketMatch({ m, now, tz, standings }) {
   const live = isLive(m, now);
   const hWin = m.played && m.a > m.b;
   const aWin = m.played && m.b > m.a;
-  const row = (name, score, win) => (
+  const side = (raw) => {
+    const r = resolveCode(raw, standings);
+    return r ? { label: r.name, prov: r.provisional } : { label: raw, prov: false };
+  };
+  const row = (s, score, win) => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: win ? 800 : 600, color: win ? "#fff" : "#cfe6f7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{flag(name)} {name || "—"}</span>
+      <span style={{ fontSize: 13, fontWeight: win ? 800 : 600, color: win ? "#fff" : "#cfe6f7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {flag(s.label)} {s.label || "—"}{s.prov && <span style={{ fontSize: 10, fontWeight: 600, color: "#7da8c9" }}> (dự kiến)</span>}
+      </span>
       {m.played && <span style={{ fontSize: 13, fontWeight: 800, color: win ? "#34d399" : "#7da8c9", minWidth: 16, textAlign: "right" }}>{score}</span>}
     </div>
   );
   return (
     <div className="lift" style={{ background: live ? "rgba(239,68,68,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${live ? "rgba(239,68,68,.45)" : "rgba(255,255,255,.08)"}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-      {row(m.home, m.a, hWin)}
+      {row(side(m.home), m.a, hWin)}
       <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
-      {row(m.away, m.b, aWin)}
+      {row(side(m.away), m.b, aWin)}
       <div style={{ fontSize: 10.5, color: live ? "#fca5a5" : "#5d83a3", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
         {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }, tz) : "Chưa rõ giờ")}
       </div>
