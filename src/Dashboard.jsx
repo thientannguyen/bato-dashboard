@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from "react";
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ReferenceLine } from "recharts";
-import { Droplet, TrendingUp, TrendingDown, Waves, Gauge, RefreshCw, CheckCircle, AlertCircle, ChevronDown, CircleDot, Trophy, CalendarClock, MapPin, Clock } from "lucide-react";
+import { Droplet, TrendingUp, TrendingDown, Waves, Gauge, RefreshCw, CheckCircle, AlertCircle, ChevronDown, CircleDot, Trophy, CalendarClock, MapPin, Clock, Sun } from "lucide-react";
 import { fetchWorldCup, flag, ROUND_ORDER } from "./wc-data.js";
 
 // Mực nước = (tổng bàn thắng cộng dồn / số trận) * 100
@@ -178,7 +178,8 @@ export default function Dashboard() {
   // Mô phỏng: nếu simLevel != null thì đập hiển thị theo mức mô phỏng (không đụng dữ liệu thật).
   const dispLevel = showSim && simLevel != null ? simLevel : realLevel;
   const fillPct = Math.min(dispLevel / MAX_LEVEL, 1);
-  const broken = dispLevel > MAX_LEVEL; // chỉ vỡ khi vượt mốc tràn (trên 310m)
+  const broken = dispLevel > MAX_LEVEL; // chỉ vỡ/xả lũ khi vượt mốc tràn
+  const damState = damStateOf(dispLevel, broken);
 
   const verified = useMemo(() => {
     const seen = {};
@@ -290,6 +291,8 @@ export default function Dashboard() {
             <StatusLine status={status} msg={statusMsg} lastUpdated={lastUpdated} tz={tz} />
           </div>
         </div>
+
+        <Reveal delay={30}><StatusBanner state={damState} level={dispLevel} /></Reveal>
 
         <Reveal delay={60}>
         <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "340px 1fr", gap: narrow ? 14 : 20, marginTop: narrow ? 14 : 20 }}>
@@ -424,6 +427,8 @@ export default function Dashboard() {
         @keyframes dangerFlash { 0%,100%{opacity:.12} 50%{opacity:.5} }
         @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
         @keyframes warnPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+        @keyframes spillOver { 0%{transform:translateY(-90%) scaleY(.7);opacity:.9} 100%{transform:translateY(120%) scaleY(1.3);opacity:.15} }
+        @keyframes sunFlicker { 0%,100%{opacity:1;transform:scale(1)} 45%{opacity:.6;transform:scale(.94)} 70%{opacity:.85;transform:scale(1.02)} }
         @keyframes jet { 0%{transform:translate(0,0) scale(1);opacity:.95} 100%{transform:translate(var(--jx),var(--jy)) scale(.3);opacity:0} }
         @keyframes crackDraw { from{stroke-dashoffset:220} to{stroke-dashoffset:0} }
         .lift{transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease}
@@ -925,34 +930,73 @@ const JETS = [
   { x: "60%", y: "14%", jx: "28px", jy: "90px", size: 7, dur: 1.25, delay: 0.26 },
 ];
 
+// Cột nước tràn qua đỉnh đập khi xả lũ.
+const SPILLS = [
+  { left: "14%", w: 6, dur: 0.9, delay: 0 },
+  { left: "30%", w: 8, dur: 1.05, delay: 0.2 },
+  { left: "46%", w: 7, dur: 0.85, delay: 0.1 },
+  { left: "60%", w: 9, dur: 1.0, delay: 0.3 },
+  { left: "76%", w: 6, dur: 0.95, delay: 0.15 },
+  { left: "88%", w: 7, dur: 1.1, delay: 0.25 },
+];
+
+// Trạng thái hồ theo mực nước: hạn hán (≤80) / bình thường / sắp tràn (≥85%) / xả lũ (>mốc tràn).
+function damStateOf(level, broken) {
+  if (broken) return "flood";
+  if (level <= 80) return "drought";
+  if (level >= MAX_LEVEL * 0.85) return "high";
+  return "normal";
+}
+const STATE_INFO = {
+  flood: { label: "XẢ LŨ!", desc: "Mực nước vượt mốc tràn — đập đang xả lũ", color: "#ef4444", bg: "rgba(239,68,68,.14)", border: "rgba(239,68,68,.5)", Icon: Waves },
+  high: { label: "SẮP TRÀN", desc: "Mực nước gần mốc tràn, cần theo dõi", color: "#fb923c", bg: "rgba(249,115,22,.14)", border: "rgba(249,115,22,.5)", Icon: AlertCircle },
+  drought: { label: "HẠN HÁN", desc: "Mực nước xuống rất thấp, hồ cạn", color: "#f59e0b", bg: "rgba(245,158,11,.14)", border: "rgba(245,158,11,.5)", Icon: Sun },
+  normal: { label: "BÌNH THƯỜNG", desc: "Mực nước ổn định", color: "#22c55e", bg: "rgba(34,197,94,.12)", border: "rgba(34,197,94,.4)", Icon: CheckCircle },
+};
+
+// Banner trạng thái hồ — full-width ngay dưới header.
+function StatusBanner({ state, level }) {
+  const info = STATE_INFO[state] || STATE_INFO.normal;
+  const Icon = info.Icon;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, background: info.bg, border: `1px solid ${info.border}`, borderRadius: 14, padding: "12px 16px", marginTop: 14, animation: state === "flood" ? "warnPulse 1.4s ease-in-out infinite" : "none" }}>
+      <Icon size={24} color={info.color} />
+      <div>
+        <div style={{ fontWeight: 800, color: info.color, fontSize: 15, letterSpacing: 0.3 }}>Trạng thái hồ: {info.label}</div>
+        <div style={{ fontSize: 12.5, color: "#9cc2dd" }}>{info.desc} (mực nước {level}m).</div>
+      </div>
+    </div>
+  );
+}
+
 function DamVisual({ fillPct, level, broken }) {
   const waterTop = 100 - fillPct * 100;
-  const nearFull = !broken && fillPct >= 0.85; // vùng cam: sắp tràn, cảnh báo trước khi vỡ
-  // Màu nước leo thang theo mức nguy hiểm: thấp -> xanh nhạt, bình thường -> xanh dương,
-  // sắp tràn -> cam cảnh báo, vỡ đập -> đỏ. Càng gần mốc tràn màu càng nóng.
+  const drought = !broken && level <= 80; // hồ cạn: hạn hán
+  // Màu nước leo thang theo trạng thái: hạn hán -> xám đục, thấp -> xanh nhạt,
+  // bình thường -> xanh dương, sắp tràn -> cam, xả lũ -> đỏ.
   const water = broken
     ? { from: "#ef4444", to: "#991b1b", crest: "#f87171", glow: "239,68,68" }
+    : drought
+    ? { from: "#6b8290", to: "#3b4a52", crest: "#90a6b0", glow: "107,130,144" }
     : fillPct >= 0.85
     ? { from: "#f97316", to: "#c2410c", crest: "#fb923c", glow: "249,115,22" }
     : fillPct <= 0.25
     ? { from: "#7dd3fc", to: "#38bdf8", crest: "#bae6fd", glow: "125,211,252" }
     : { from: "#0ea5e9", to: "#0369a1", crest: "#22a7e0", glow: "14,165,233" };
+  // Nền khung & màu nhãn mực nước theo trạng thái.
+  const boxBg = drought ? "linear-gradient(#4a3f2a,#2e2818)" : "linear-gradient(#1a3a52,#13293d)";
+  const labelColor = drought ? "#f59e0b" : water.from;
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, position: "relative", overflow: "hidden" }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "#bcdcf2" }}>Đập thủy điện BA TO</h3>
-      {nearFull && (
-        <div style={{ marginBottom: 12, padding: "9px 12px", borderRadius: 10, background: "rgba(249,115,22,.15)", border: "1px solid rgba(249,115,22,.5)", color: "#fdba74", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 8, animation: "warnPulse 1.8s ease-in-out infinite" }}>
-          ⚠️ Sắp tràn — mực nước {level}m đã gần mốc {MAX_LEVEL}m
-        </div>
-      )}
-      <div style={{ position: "relative", height: 360, borderRadius: 12, overflow: "hidden", background: "linear-gradient(#1a3a52,#13293d)", border: `2px solid ${broken ? "rgba(239,68,68,.85)" : "rgba(255,255,255,.1)"}`, boxShadow: broken ? "0 0 30px rgba(239,68,68,.5)" : "none", animation: broken ? "shake .4s ease-in-out infinite" : "none" }}>
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: `${waterTop}%`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: `linear-gradient(180deg,${water.from},${water.to})`, overflow: "hidden", boxShadow: `0 0 40px rgba(${water.glow},.4)` }}>
-          <div style={{ position: "absolute", top: -8, left: 0, width: "200%", height: 16, animation: "wave 4s linear infinite" }}>
+      <div style={{ position: "relative", height: 360, borderRadius: 12, overflow: "hidden", background: boxBg, transition: "background 1s ease", border: `2px solid ${broken ? "rgba(239,68,68,.85)" : drought ? "rgba(245,158,11,.55)" : "rgba(255,255,255,.1)"}`, boxShadow: broken ? "0 0 30px rgba(239,68,68,.5)" : drought ? "0 0 24px rgba(245,158,11,.22)" : "none", animation: broken ? "shake .4s ease-in-out infinite" : "none" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: `${waterTop}%`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: `linear-gradient(180deg,${water.from},${water.to})`, overflow: "hidden", opacity: drought ? 0.6 : 1, boxShadow: `0 0 40px rgba(${water.glow},.4)` }}>
+          <div style={{ position: "absolute", top: -8, left: 0, width: "200%", height: 16, animation: `wave ${broken ? 2 : 4}s linear infinite` }}>
             <svg width="100%" height="16" viewBox="0 0 1200 16" preserveAspectRatio="none">
               <path d="M0,8 Q150,0 300,8 T600,8 T900,8 T1200,8 V16 H0 Z" fill={water.crest} opacity="0.7" />
             </svg>
           </div>
-          <div style={{ position: "absolute", top: -5, left: 0, width: "200%", height: 14, animation: "wave2 7s linear infinite" }}>
+          <div style={{ position: "absolute", top: -5, left: 0, width: "200%", height: 14, animation: `wave2 ${broken ? 3.5 : 7}s linear infinite` }}>
             <svg width="100%" height="14" viewBox="0 0 1200 14" preserveAspectRatio="none">
               <path d="M0,7 Q150,14 300,7 T600,7 T900,7 T1200,7 V14 H0 Z" fill={water.crest} opacity="0.35" />
             </svg>
@@ -964,13 +1008,17 @@ function DamVisual({ fillPct, level, broken }) {
         {[0, 100, 200].map((mk) => (
           <div key={mk} style={{ position: "absolute", left: 0, right: 0, bottom: `${(mk / MAX_LEVEL) * 100}%`, borderTop: "1px dashed rgba(255,255,255,.18)", fontSize: 10, color: "#9cc2dd", paddingLeft: 6 }}>{mk}m</div>
         ))}
-        <div style={{ position: "absolute", right: 10, top: `clamp(6px, calc(${waterTop}% - 12px), calc(100% - 30px))`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: water.from, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
+        <div style={{ position: "absolute", right: 10, top: `clamp(6px, calc(${waterTop}% - 12px), calc(100% - 30px))`, transition: "top 1s cubic-bezier(.4,0,.2,1), background 1s ease", background: labelColor, color: "#fff", fontWeight: 800, fontSize: 14, padding: "3px 10px", borderRadius: 8, boxShadow: "0 2px 10px rgba(0,0,0,.4)" }}><CountUp value={level} suffix=" m" /></div>
         <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#3a5a72,#2a4358)" }} />
         <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 8, background: "linear-gradient(90deg,#2a4358,#3a5a72)" }} />
         {broken && (
           <>
             {/* nước cuộn tràn qua đỉnh */}
             <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: "100%", background: "linear-gradient(180deg,rgba(248,113,113,.6),rgba(248,113,113,0) 55%)", animation: "gush 1.1s ease-out infinite", pointerEvents: "none" }} />
+            {/* các cột nước tràn qua đỉnh đập chảy xuống */}
+            {SPILLS.map((s, i) => (
+              <div key={`sp${i}`} style={{ position: "absolute", top: 0, left: s.left, width: s.w, height: 76, borderRadius: "0 0 4px 4px", background: "linear-gradient(180deg,rgba(255,255,255,.9),rgba(186,230,253,.1))", animation: `spillOver ${s.dur}s linear ${s.delay}s infinite`, pointerEvents: "none" }} />
+            ))}
             {/* vết nứt trên thân đập — vẽ dần ra */}
             <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} viewBox="0 0 100 100" preserveAspectRatio="none">
               <polyline points="22,0 28,16 17,33 30,50 19,70 31,100" fill="none" stroke="rgba(255,255,255,.8)" strokeWidth="1" style={{ strokeDasharray: 220, animation: "crackDraw .55s ease-out both" }} />
@@ -983,12 +1031,27 @@ function DamVisual({ fillPct, level, broken }) {
             ))}
             {/* cảnh báo */}
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ background: "rgba(220,38,38,.94)", color: "#fff", fontWeight: 900, fontSize: 18, lineHeight: 1.3, padding: "12px 18px", borderRadius: 12, boxShadow: "0 6px 26px rgba(0,0,0,.55)", textAlign: "center", animation: "alertPulse 1s ease-in-out infinite" }}>💥 VỠ ĐẬP!<br /><span style={{ fontSize: 12, fontWeight: 700 }}>Mực nước {level}m vượt mốc tràn {MAX_LEVEL}m</span></div>
+              <div style={{ background: "rgba(220,38,38,.94)", color: "#fff", fontWeight: 900, fontSize: 18, lineHeight: 1.3, padding: "12px 18px", borderRadius: 12, boxShadow: "0 6px 26px rgba(0,0,0,.55)", textAlign: "center", animation: "alertPulse 1s ease-in-out infinite" }}>🌊 XẢ LŨ!<br /><span style={{ fontSize: 12, fontWeight: 700 }}>Mực nước {level}m vượt mốc tràn {MAX_LEVEL}m</span></div>
             </div>
           </>
         )}
+        {drought && (
+          <>
+            {/* mặt trời nhấp nháy góc trên */}
+            <div style={{ position: "absolute", top: 14, right: 16, width: 46, height: 46, borderRadius: "50%", background: "radial-gradient(circle,#fde68a,#f59e0b)", boxShadow: "0 0 28px 8px rgba(245,158,11,.55)", animation: "sunFlicker 2.2s ease-in-out infinite", pointerEvents: "none" }} />
+            {/* đáy hồ nứt nẻ, ngả nâu */}
+            <svg style={{ position: "absolute", left: 0, right: 0, bottom: 0, width: "100%", height: "42%", pointerEvents: "none" }} viewBox="0 0 100 42" preserveAspectRatio="none">
+              <rect x="0" y="0" width="100" height="42" fill="rgba(120,86,42,.30)" />
+              <polyline points="8,2 14,14 6,26 16,40" fill="none" stroke="rgba(60,40,18,.6)" strokeWidth="0.7" />
+              <polyline points="34,0 30,16 40,28 33,42" fill="none" stroke="rgba(60,40,18,.6)" strokeWidth="0.7" />
+              <polyline points="60,4 67,18 58,30 66,42" fill="none" stroke="rgba(60,40,18,.55)" strokeWidth="0.7" />
+              <polyline points="86,0 80,15 90,30 84,42" fill="none" stroke="rgba(60,40,18,.55)" strokeWidth="0.7" />
+              <polyline points="0,30 100,33" fill="none" stroke="rgba(60,40,18,.4)" strokeWidth="0.6" />
+            </svg>
+          </>
+        )}
       </div>
-      <p style={{ margin: "10px 2px 0", fontSize: 11, color: broken ? "#fca5a5" : "#5d83a3", textAlign: "center" }}>{broken ? "⚠️ Đập đã vỡ — vượt mốc tràn!" : `Mốc tràn đập: ${MAX_LEVEL}m`}</p>
+      <p style={{ margin: "10px 2px 0", fontSize: 11, color: broken ? "#fca5a5" : drought ? "#fcd34d" : "#5d83a3", textAlign: "center" }}>{broken ? "🌊 Đang xả lũ — vượt mốc tràn!" : drought ? "🌵 Hạn hán — hồ cạn, mực nước rất thấp" : `Mốc tràn đập: ${MAX_LEVEL}m`}</p>
     </div>
   );
 }
@@ -1003,11 +1066,12 @@ function SimControl({ level, simOn, broken, onSet }) {
       </div>
       <input type="range" min={0} max={500} step={1} value={level} onChange={(e) => onSet(Number(e.target.value))}
         style={{ width: "100%", accentColor: broken ? "#ef4444" : "#0ea5e9", cursor: "pointer" }} />
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button onClick={() => onSet(MAX_LEVEL + 40)} style={{ flex: 1, background: "linear-gradient(135deg,#ef4444,#b91c1c)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>💥 Thử vỡ đập</button>
-        <button onClick={() => onSet(null)} disabled={!simOn} style={{ flex: 1, background: simOn ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 9, color: simOn ? "#cfe6f7" : "#5d83a3", padding: "8px 10px", fontWeight: 700, fontSize: 13, cursor: simOn ? "pointer" : "default" }}>↺ Về thực tế</button>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button onClick={() => onSet(MAX_LEVEL + 40)} style={{ flex: "1 1 46%", background: "linear-gradient(135deg,#ef4444,#b91c1c)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>🌊 Thử xả lũ</button>
+        <button onClick={() => onSet(50)} style={{ flex: "1 1 46%", background: "linear-gradient(135deg,#f59e0b,#b45309)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>🌵 Thử hạn hán</button>
+        <button onClick={() => onSet(null)} disabled={!simOn} style={{ flex: "1 1 100%", background: simOn ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 9, color: simOn ? "#cfe6f7" : "#5d83a3", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: simOn ? "pointer" : "default" }}>↺ Về thực tế</button>
       </div>
-      <p style={{ margin: "8px 2px 0", fontSize: 11, color: "#5d83a3" }}>Kéo thanh hoặc bấm "Thử vỡ đập" để xem hiệu ứng khi vượt mốc tràn {MAX_LEVEL}m. Chỉ ảnh hưởng hình ảnh, không đổi dữ liệu.</p>
+      <p style={{ margin: "8px 2px 0", fontSize: 11, color: "#5d83a3" }}>Kéo thanh hoặc bấm thử để xem trạng thái xả lũ (&gt;{MAX_LEVEL}m) và hạn hán (≤80m). Chỉ ảnh hưởng hình ảnh, không đổi dữ liệu.</p>
     </div>
   );
 }
