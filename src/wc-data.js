@@ -169,6 +169,7 @@ export async function fetchWorldCup() {
     // Gom toàn bộ trận knock-out (đã đá + sắp tới) để dựng sơ đồ cây đấu loại.
     if (!isGroup) {
       knockout.push({
+        num: m.num,
         round: base.group,
         home: base.home,
         away: base.away,

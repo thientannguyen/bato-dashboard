@@ -544,16 +544,39 @@ function LiveBadge({ label }) {
 
 // Sơ đồ cây đấu loại trực tiếp — xếp các vòng thành cột, cuộn ngang trên mobile.
 // Mặc định thu gọn khi chưa có trận knock-out nào đá; tự mở khi vòng loại trực tiếp bắt đầu.
-// Đổi mã chỗ "1F"/"2C" thành tên đội thật lấy từ bảng xếp hạng tự tính.
-// provisional = bảng đó chưa đá xong (thứ hạng còn có thể đổi).
-function resolveCode(raw, standings) {
-  const m = /^([12])([A-L])$/.exec(String(raw || "").trim());
-  if (!m || !standings) return null;
-  const pos = Number(m[1]) - 1;
-  const table = standings[m[2]];
-  if (!table || !table[pos]) return null;
-  const done = table.length === 4 && table.every((t) => t.P === 3);
-  return { name: table[pos].team, provisional: !done };
+// Đổi mã chỗ trong sơ đồ thành thứ đọc được:
+//  - "1F"/"2C" -> tên đội nhất/nhì bảng (từ bảng xếp hạng tự tính)
+//  - "W74"/"L101" -> "Thắng/Thua <đội A>/<đội B>" (2 đội của trận #74) nếu đã biết
+//  - vòng sâu (feeder cũng là W##) hoặc chưa rõ -> "chờ vòng trước"
+//  - "3A/B/C/D/F" và mã khác -> giữ nguyên
+function resolveSlot(raw, standings, byNum, depth = 0) {
+  raw = String(raw || "").trim();
+  if (!raw) return { kind: "raw", text: "—" };
+  const g = /^([12])([A-L])$/.exec(raw);
+  if (g) {
+    const pos = Number(g[1]) - 1;
+    const table = standings && standings[g[2]];
+    if (table && table[pos]) {
+      const done = table.length === 4 && table.every((t) => t.P === 3);
+      return { kind: "team", name: table[pos].team, prov: !done };
+    }
+    return { kind: "raw", text: raw };
+  }
+  const wl = /^([WL])(\d+)$/.exec(raw);
+  if (wl) {
+    if (depth >= 1) return { kind: "wait" }; // tránh lồng nhiều tầng
+    const feeder = byNum && byNum[wl[2]];
+    if (feeder) {
+      const a = resolveSlot(feeder.home, standings, byNum, depth + 1);
+      const b = resolveSlot(feeder.away, standings, byNum, depth + 1);
+      if (a.kind === "team" && b.kind === "team") {
+        return { kind: "compound", verb: wl[1] === "W" ? "Thắng" : "Thua", a, b };
+      }
+    }
+    return { kind: "wait" };
+  }
+  if (/\//.test(raw) || /^[0-9]/.test(raw)) return { kind: "raw", text: raw }; // 3A/B/... giữ nguyên
+  return { kind: "team", name: raw, prov: false }; // tên đội thật
 }
 
 function BracketSection({ knockout, now, narrow, tz, standings }) {
@@ -566,6 +589,11 @@ function BracketSection({ knockout, now, narrow, tz, standings }) {
     const ordered = ROUND_ORDER.filter((r) => by[r]);
     Object.keys(by).forEach((r) => { if (!ordered.includes(r)) ordered.push(r); });
     return ordered.map((r) => ({ round: r, matches: by[r] }));
+  }, [knockout]);
+  const byNum = useMemo(() => {
+    const map = {};
+    (knockout || []).forEach((m) => { if (m.num != null) map[String(m.num)] = m; });
+    return map;
   }, [knockout]);
 
   const started = useMemo(() => (knockout || []).some((m) => m.played || isLive(m, now)), [knockout, now]);
@@ -602,14 +630,16 @@ function BracketSection({ knockout, now, narrow, tz, standings }) {
         </p>
       ) : (
         <>
-          <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi cột là một vòng. Trận đã đá hiện tỉ số, trận chưa đá hiện giờ bóng lăn ({tzNice(tz)}).</p>
-          <div style={{ display: "flex", gap: 16, overflowX: "auto", paddingBottom: 6 }}>
+          <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi mục là một vòng. Trận đã đá hiện tỉ số, trận chưa đá hiện giờ bóng lăn ({tzNice(tz)}).</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {rounds.map(({ round, matches }) => (
-              <div key={round} style={{ minWidth: narrow ? 220 : 240, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: 13, textAlign: "center", padding: "4px 0", background: "rgba(167,139,250,.1)", borderRadius: 8 }}>{round}</div>
-                {matches.map((m, i) => (
-                  <BracketMatch key={i} m={m} now={now} tz={tz} standings={standings} />
-                ))}
+              <div key={round}>
+                <div style={{ fontWeight: 800, color: "#c4b5fd", fontSize: 13, padding: "5px 10px", background: "rgba(167,139,250,.1)", borderRadius: 8 }}>{round} <span style={{ color: "#7da8c9", fontWeight: 600 }}>· {matches.length} trận</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${narrow ? 170 : 210}px, 1fr))`, gap: 10, marginTop: 8 }}>
+                  {matches.map((m, i) => (
+                    <BracketMatch key={i} m={m} now={now} tz={tz} standings={standings} byNum={byNum} />
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -619,27 +649,34 @@ function BracketSection({ knockout, now, narrow, tz, standings }) {
   );
 }
 
-function BracketMatch({ m, now, tz, standings }) {
+function BracketMatch({ m, now, tz, standings, byNum }) {
   const live = isLive(m, now);
   const hWin = m.played && m.a > m.b;
   const aWin = m.played && m.b > m.a;
-  const side = (raw) => {
-    const r = resolveCode(raw, standings);
-    return r ? { label: r.name, prov: r.provisional } : { label: raw, prov: false };
+  const teamSpan = (name) => <>{flag(name)} {name}</>;
+  const renderSide = (s) => {
+    if (s.kind === "team") return <>{teamSpan(s.name)}{s.prov && <span style={{ fontSize: 10, fontWeight: 600, color: "#7da8c9" }}> (dự kiến)</span>}</>;
+    if (s.kind === "compound") return <span style={{ fontWeight: 600 }}>{s.verb} {teamSpan(s.a.name)} / {teamSpan(s.b.name)}</span>;
+    if (s.kind === "wait") return <span style={{ color: "#5d83a3", fontStyle: "italic", fontWeight: 600 }}>chờ vòng trước</span>;
+    return s.text || "—";
   };
-  const row = (s, score, win) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: win ? 800 : 600, color: win ? "#fff" : "#cfe6f7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {flag(s.label)} {s.label || "—"}{s.prov && <span style={{ fontSize: 10, fontWeight: 600, color: "#7da8c9" }}> (dự kiến)</span>}
-      </span>
-      {m.played && <span style={{ fontSize: 13, fontWeight: 800, color: win ? "#34d399" : "#7da8c9", minWidth: 16, textAlign: "right" }}>{score}</span>}
-    </div>
-  );
+  const row = (raw, score, win) => {
+    const s = resolveSlot(raw, standings, byNum, 0);
+    const wrap = s.kind === "compound"; // nhãn dài thì cho xuống dòng
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: wrap ? 11.5 : 13, fontWeight: win ? 800 : 600, color: win ? "#fff" : "#cfe6f7", overflow: "hidden", textOverflow: wrap ? "clip" : "ellipsis", whiteSpace: wrap ? "normal" : "nowrap", lineHeight: 1.25 }}>
+          {renderSide(s)}
+        </span>
+        {m.played && <span style={{ fontSize: 13, fontWeight: 800, color: win ? "#34d399" : "#7da8c9", minWidth: 16, textAlign: "right" }}>{score}</span>}
+      </div>
+    );
+  };
   return (
     <div className="lift" style={{ background: live ? "rgba(239,68,68,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${live ? "rgba(239,68,68,.45)" : "rgba(255,255,255,.08)"}`, borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-      {row(side(m.home), m.a, hWin)}
+      {row(m.home, m.a, hWin)}
       <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
-      {row(side(m.away), m.b, aWin)}
+      {row(m.away, m.b, aWin)}
       <div style={{ fontSize: 10.5, color: live ? "#fca5a5" : "#5d83a3", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
         {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }, tz) : "Chưa rõ giờ")}
       </div>
