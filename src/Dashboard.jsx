@@ -391,7 +391,7 @@ export default function Dashboard() {
                         <td style={td}>{m.day}</td>
                         <td style={td}><GroupBadge group={m.group} stage={m.stage} /></td>
                         <td style={{ ...td, color: "#cfe6f7" }}>{flag(m.home)} {m.home} <span style={{ color: "#5d83a3" }}>vs</span> {m.away} {flag(m.away)}</td>
-                        <td style={td}><span style={{ background: "rgba(14,165,233,.15)", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>{m.score}</span></td>
+                        <td style={td}><span style={{ background: "rgba(14,165,233,.15)", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>{m.score}</span>{m.pens && <span style={{ fontSize: 11, color: "#9cc2dd", marginLeft: 6, whiteSpace: "nowrap" }}>(luân lưu {m.pens[0]}-{m.pens[1]})</span>}</td>
                         <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "#38bdf8" }}>{m.level} m</td>
                       </tr>
                       {open && (
@@ -567,11 +567,15 @@ function resolveSlot(raw, standings, byNum, depth = 0) {
   if (wl) {
     const feeder = byNum && byNum[wl[2]];
     if (feeder) {
-      // Trận feeder đã đá xong -> hiện luôn đội thắng/thua thật.
-      if (feeder.played && feeder.a !== feeder.b) {
-        const homeWon = feeder.a > feeder.b;
-        const pick = (wl[1] === "W") === homeWon ? feeder.home : feeder.away;
-        return resolveSlot(pick, standings, byNum, depth + 1);
+      // Trận feeder đã đá xong -> hiện luôn đội thắng/thua thật (hòa thì xét luân lưu).
+      if (feeder.played) {
+        const homeWon = feeder.a !== feeder.b
+          ? feeder.a > feeder.b
+          : (feeder.pens ? feeder.pens[0] > feeder.pens[1] : null);
+        if (homeWon !== null) {
+          const pick = (wl[1] === "W") === homeWon ? feeder.home : feeder.away;
+          return resolveSlot(pick, standings, byNum, depth + 1);
+        }
       }
       // Chưa đá: nếu cả 2 đội feeder đã biết thì hiện cặp "Thắng A/B".
       if (depth < 1) {
@@ -660,8 +664,10 @@ function BracketSection({ knockout, now, narrow, tz, standings }) {
 
 function BracketMatch({ m, now, tz, standings, byNum }) {
   const live = isLive(m, now);
-  const hWin = m.played && m.a > m.b;
-  const aWin = m.played && m.b > m.a;
+  const penH = m.pens && m.pens[0] > m.pens[1];
+  const penA = m.pens && m.pens[1] > m.pens[0];
+  const hWin = m.played && (m.a > m.b || (m.a === m.b && penH));
+  const aWin = m.played && (m.b > m.a || (m.a === m.b && penA));
   const teamSpan = (name) => <>{flag(name)} {name}</>;
   const renderSide = (s) => {
     if (s.kind === "team") return <>{teamSpan(s.name)}{s.prov && <span style={{ fontSize: 10, fontWeight: 600, color: "#7da8c9" }}> (dự kiến)</span>}</>;
@@ -687,7 +693,7 @@ function BracketMatch({ m, now, tz, standings, byNum }) {
       <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
       {row(m.away, m.b, aWin)}
       <div style={{ fontSize: 10.5, color: live ? "#fca5a5" : "#5d83a3", marginTop: 2, display: "flex", alignItems: "center", gap: 6 }}>
-        {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? "Kết thúc" : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }, tz) : "Chưa rõ giờ")}
+        {live ? <LiveBadge label="ĐANG ĐÁ" /> : m.played ? (m.pens ? `Luân lưu ${m.pens[0]}-${m.pens[1]}` : "Kết thúc") : (m.kickoff_iso ? fxTimeLabel({ kickoff_iso: m.kickoff_iso }, tz) : "Chưa rõ giờ")}
       </div>
     </div>
   );

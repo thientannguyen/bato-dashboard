@@ -154,6 +154,8 @@ export async function fetchWorldCup() {
   const knockout = [];
   sorted.forEach((m) => {
     const ft = fullTime(m.score);
+    // Luân lưu (nếu có) — chỉ để hiển thị & xác định đội đi tiếp, KHÔNG tính vào tổng bàn thắng/mực nước.
+    const pens = m.score && Array.isArray(m.score.p) && m.score.p.length === 2 ? m.score.p : null;
     const isGroup = !!m.group;
     const base = {
       home: team(m.team1),
@@ -164,7 +166,7 @@ export async function fetchWorldCup() {
       kickoff_text: m.time || "",
       ...parseGround(m.ground),
     };
-    if (ft) played.push({ ...base, a: ft[0], b: ft[1], scorers: mapScorers(m.goals1, m.goals2) });
+    if (ft) played.push({ ...base, a: ft[0], b: ft[1], pens, scorers: mapScorers(m.goals1, m.goals2) });
     else upcoming.push({ ...base, _date: m.date });
     // Gom toàn bộ trận knock-out (đã đá + sắp tới) để dựng sơ đồ cây đấu loại.
     if (!isGroup) {
@@ -176,6 +178,7 @@ export async function fetchWorldCup() {
         kickoff_iso: base.kickoff_iso,
         a: ft ? ft[0] : null,
         b: ft ? ft[1] : null,
+        pens,
         played: !!ft,
       });
     }
@@ -188,6 +191,7 @@ export async function fetchWorldCup() {
     away: m.away,
     a: m.a,
     b: m.b,
+    pens: m.pens,
     group: m.group,
     stage: m.stage,
     kickoff_iso: m.kickoff_iso,
