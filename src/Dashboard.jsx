@@ -180,6 +180,7 @@ export default function Dashboard() {
   const fillPct = Math.min(dispLevel / MAX_LEVEL, 1);
   const broken = dispLevel > MAX_LEVEL; // chỉ vỡ đập khi vượt mốc tràn
   const damState = damStateOf(dispLevel, broken);
+  const koStarted = (knockout || []).some((m) => m.played || isLive(m, now)); // đã vào vòng knock-out
 
   const verified = useMemo(() => {
     const seen = {};
@@ -338,7 +339,7 @@ export default function Dashboard() {
         <Reveal delay={180}><FixturesSection fixtures={fixtures} status={fxStatus} now={now} tz={tz} /></Reveal>
 
         {/* Standings */}
-        <Reveal delay={240}><StandingsSection standings={standings} /></Reveal>
+        <Reveal delay={240}><StandingsSection standings={standings} koStarted={koStarted} /></Reveal>
 
         {/* Sơ đồ cây đấu loại */}
         <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} tz={tz} standings={standings} /></Reveal>
@@ -551,7 +552,7 @@ function LiveBadge({ label }) {
 //  - "3A/B/C/D/F" và mã khác -> giữ nguyên
 function resolveSlot(raw, standings, byNum, depth = 0) {
   raw = String(raw || "").trim();
-  if (!raw) return { kind: "raw", text: "—" };
+  if (!raw || depth > 4) return { kind: "raw", text: raw || "—" };
   const g = /^([12])([A-L])$/.exec(raw);
   if (g) {
     const pos = Number(g[1]) - 1;
@@ -564,13 +565,21 @@ function resolveSlot(raw, standings, byNum, depth = 0) {
   }
   const wl = /^([WL])(\d+)$/.exec(raw);
   if (wl) {
-    if (depth >= 1) return { kind: "wait" }; // tránh lồng nhiều tầng
     const feeder = byNum && byNum[wl[2]];
     if (feeder) {
-      const a = resolveSlot(feeder.home, standings, byNum, depth + 1);
-      const b = resolveSlot(feeder.away, standings, byNum, depth + 1);
-      if (a.kind === "team" && b.kind === "team") {
-        return { kind: "compound", verb: wl[1] === "W" ? "Thắng" : "Thua", a, b };
+      // Trận feeder đã đá xong -> hiện luôn đội thắng/thua thật.
+      if (feeder.played && feeder.a !== feeder.b) {
+        const homeWon = feeder.a > feeder.b;
+        const pick = (wl[1] === "W") === homeWon ? feeder.home : feeder.away;
+        return resolveSlot(pick, standings, byNum, depth + 1);
+      }
+      // Chưa đá: nếu cả 2 đội feeder đã biết thì hiện cặp "Thắng A/B".
+      if (depth < 1) {
+        const a = resolveSlot(feeder.home, standings, byNum, depth + 1);
+        const b = resolveSlot(feeder.away, standings, byNum, depth + 1);
+        if (a.kind === "team" && b.kind === "team") {
+          return { kind: "compound", verb: wl[1] === "W" ? "Thắng" : "Thua", a, b };
+        }
       }
     }
     return { kind: "wait" };
@@ -830,8 +839,13 @@ function TeamPts({ name, info }) {
   );
 }
 
-function StandingsSection({ standings }) {
+function StandingsSection({ standings, koStarted }) {
   const keys = Object.keys(standings);
+  const [open, setOpen] = useState(true);
+  const [touched, setTouched] = useState(false);
+  // Tự thu gọn khi đã vào vòng knock-out (trừ khi người dùng tự bật/tắt).
+  useEffect(() => { if (koStarted && !touched) setOpen(false); }, [koStarted, touched]);
+  const toggle = () => { setTouched(true); setOpen((o) => !o); };
   // WC 2026: 2 đội đầu mỗi bảng + 8 đội hạng ba tốt nhất đi tiếp (tổng 32 đội).
   const bestThirds = (() => {
     const thirds = keys.map((g) => standings[g][2]).filter(Boolean);
@@ -848,8 +862,18 @@ function StandingsSection({ standings }) {
   }
   return (
     <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}><Trophy size={16} color="#fbbf24" /> Bảng xếp hạng</h3>
-      <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Tự tính từ kết quả vòng bảng — thắng 3đ, hòa 1đ. Xếp theo Điểm → Hiệu số → Bàn thắng. 2 đội đầu mỗi bảng (xanh lá) + 8 đội hạng ba tốt nhất (xanh dương) đi tiếp — tổng 32 đội vào vòng loại trực tiếp.</p>
+      <div onClick={toggle} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer" }}>
+        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8 }}>
+          <Trophy size={16} color="#fbbf24" /> Bảng xếp hạng
+          {koStarted && <span style={{ fontSize: 11, fontWeight: 700, color: "#c4b5fd", background: "rgba(167,139,250,.15)", padding: "2px 8px", borderRadius: 999 }}>đã vào vòng trong</span>}
+        </h3>
+        <ChevronDown size={18} color="#7da8c9" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s", flexShrink: 0 }} />
+      </div>
+      {!open ? (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#5d83a3" }}>{koStarted ? "Đã vào vòng knock-out — bấm để xem lại bảng xếp hạng vòng bảng." : "Bấm để xem bảng xếp hạng."}</p>
+      ) : (
+      <>
+      <p style={{ margin: "10px 0 14px", fontSize: 12, color: "#5d83a3" }}>Tự tính từ kết quả vòng bảng — thắng 3đ, hòa 1đ. Xếp theo Điểm → Hiệu số → Bàn thắng. 2 đội đầu mỗi bảng (xanh lá) + 8 đội hạng ba tốt nhất (xanh dương) đi tiếp — tổng 32 đội vào vòng loại trực tiếp.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
         {keys.map((g) => (
           <div key={g} className="lift" style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: 12 }}>
@@ -883,6 +907,8 @@ function StandingsSection({ standings }) {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 }
