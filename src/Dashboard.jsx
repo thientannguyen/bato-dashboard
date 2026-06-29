@@ -578,7 +578,7 @@ function resolveSlot(raw, standings, byNum, depth = 0) {
         const a = resolveSlot(feeder.home, standings, byNum, depth + 1);
         const b = resolveSlot(feeder.away, standings, byNum, depth + 1);
         if (a.kind === "team" && b.kind === "team") {
-          return { kind: "compound", verb: wl[1] === "W" ? "Thắng" : "Thua", a, b };
+          return { kind: "compound", verb: wl[1] === "W" ? "" : "Thua", a, b };
         }
       }
     }
@@ -665,7 +665,7 @@ function BracketMatch({ m, now, tz, standings, byNum }) {
   const teamSpan = (name) => <>{flag(name)} {name}</>;
   const renderSide = (s) => {
     if (s.kind === "team") return <>{teamSpan(s.name)}{s.prov && <span style={{ fontSize: 10, fontWeight: 600, color: "#7da8c9" }}> (dự kiến)</span>}</>;
-    if (s.kind === "compound") return <span style={{ fontWeight: 600 }}>{s.verb} {teamSpan(s.a.name)} / {teamSpan(s.b.name)}</span>;
+    if (s.kind === "compound") return <span style={{ fontWeight: 600 }}>{s.verb && `${s.verb} `}{teamSpan(s.a.name)} / {teamSpan(s.b.name)}</span>;
     if (s.kind === "wait") return <span style={{ color: "#5d83a3", fontStyle: "italic", fontWeight: 600 }}>chờ vòng trước</span>;
     return s.text || "—";
   };
