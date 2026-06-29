@@ -178,7 +178,7 @@ export default function Dashboard() {
   // Mô phỏng: nếu simLevel != null thì đập hiển thị theo mức mô phỏng (không đụng dữ liệu thật).
   const dispLevel = showSim && simLevel != null ? simLevel : realLevel;
   const fillPct = Math.min(dispLevel / MAX_LEVEL, 1);
-  const broken = dispLevel > MAX_LEVEL; // chỉ vỡ/xả lũ khi vượt mốc tràn
+  const broken = dispLevel > MAX_LEVEL; // chỉ vỡ đập khi vượt mốc tràn
   const damState = damStateOf(dispLevel, broken);
 
   const verified = useMemo(() => {
@@ -930,7 +930,7 @@ const JETS = [
   { x: "60%", y: "14%", jx: "28px", jy: "90px", size: 7, dur: 1.25, delay: 0.26 },
 ];
 
-// Cột nước tràn qua đỉnh đập khi xả lũ.
+// Cột nước tràn qua đỉnh đập khi vỡ đập.
 const SPILLS = [
   { left: "14%", w: 6, dur: 0.9, delay: 0 },
   { left: "30%", w: 8, dur: 1.05, delay: 0.2 },
@@ -940,7 +940,7 @@ const SPILLS = [
   { left: "88%", w: 7, dur: 1.1, delay: 0.25 },
 ];
 
-// Trạng thái hồ theo mực nước: hạn hán (≤80) / bình thường / sắp tràn (≥85%) / xả lũ (>mốc tràn).
+// Trạng thái hồ theo mực nước: hạn hán (≤80) / bình thường / sắp tràn (≥85%) / vỡ đập (>mốc tràn).
 function damStateOf(level, broken) {
   if (broken) return "flood";
   if (level <= 80) return "drought";
@@ -948,7 +948,7 @@ function damStateOf(level, broken) {
   return "normal";
 }
 const STATE_INFO = {
-  flood: { label: "XẢ LŨ!", desc: "Mực nước vượt mốc tràn — đập đang xả lũ", color: "#ef4444", bg: "rgba(239,68,68,.14)", border: "rgba(239,68,68,.5)", Icon: Waves },
+  flood: { label: "VỠ ĐẬP!", desc: "Mực nước vượt mốc tràn — đập đã vỡ", color: "#ef4444", bg: "rgba(239,68,68,.14)", border: "rgba(239,68,68,.5)", Icon: Waves },
   high: { label: "SẮP TRÀN", desc: "Mực nước gần mốc tràn, cần theo dõi", color: "#fb923c", bg: "rgba(249,115,22,.14)", border: "rgba(249,115,22,.5)", Icon: AlertCircle },
   drought: { label: "HẠN HÁN", desc: "Mực nước xuống rất thấp, hồ cạn", color: "#f59e0b", bg: "rgba(245,158,11,.14)", border: "rgba(245,158,11,.5)", Icon: Sun },
   normal: { label: "BÌNH THƯỜNG", desc: "Mực nước ổn định", color: "#22c55e", bg: "rgba(34,197,94,.12)", border: "rgba(34,197,94,.4)", Icon: CheckCircle },
@@ -973,7 +973,7 @@ function DamVisual({ fillPct, level, broken }) {
   const waterTop = 100 - fillPct * 100;
   const drought = !broken && level <= 80; // hồ cạn: hạn hán
   // Màu nước leo thang theo trạng thái: hạn hán -> xám đục, thấp -> xanh nhạt,
-  // bình thường -> xanh dương, sắp tràn -> cam, xả lũ -> đỏ.
+  // bình thường -> xanh dương, sắp tràn -> cam, vỡ đập -> đỏ.
   const water = broken
     ? { from: "#ef4444", to: "#991b1b", crest: "#f87171", glow: "239,68,68" }
     : drought
@@ -1031,7 +1031,7 @@ function DamVisual({ fillPct, level, broken }) {
             ))}
             {/* cảnh báo */}
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ background: "rgba(220,38,38,.94)", color: "#fff", fontWeight: 900, fontSize: 18, lineHeight: 1.3, padding: "12px 18px", borderRadius: 12, boxShadow: "0 6px 26px rgba(0,0,0,.55)", textAlign: "center", animation: "alertPulse 1s ease-in-out infinite" }}>🌊 XẢ LŨ!<br /><span style={{ fontSize: 12, fontWeight: 700 }}>Mực nước {level}m vượt mốc tràn {MAX_LEVEL}m</span></div>
+              <div style={{ background: "rgba(220,38,38,.94)", color: "#fff", fontWeight: 900, fontSize: 18, lineHeight: 1.3, padding: "12px 18px", borderRadius: 12, boxShadow: "0 6px 26px rgba(0,0,0,.55)", textAlign: "center", animation: "alertPulse 1s ease-in-out infinite" }}>💥 VỠ ĐẬP!<br /><span style={{ fontSize: 12, fontWeight: 700 }}>Mực nước {level}m vượt mốc tràn {MAX_LEVEL}m</span></div>
             </div>
           </>
         )}
@@ -1051,7 +1051,7 @@ function DamVisual({ fillPct, level, broken }) {
           </>
         )}
       </div>
-      <p style={{ margin: "10px 2px 0", fontSize: 11, color: broken ? "#fca5a5" : drought ? "#fcd34d" : "#5d83a3", textAlign: "center" }}>{broken ? "🌊 Đang xả lũ — vượt mốc tràn!" : drought ? "🌵 Hạn hán — hồ cạn, mực nước rất thấp" : `Mốc tràn đập: ${MAX_LEVEL}m`}</p>
+      <p style={{ margin: "10px 2px 0", fontSize: 11, color: broken ? "#fca5a5" : drought ? "#fcd34d" : "#5d83a3", textAlign: "center" }}>{broken ? "💥 Đập đã vỡ — vượt mốc tràn!" : drought ? "🌵 Hạn hán — hồ cạn, mực nước rất thấp" : `Mốc tràn đập: ${MAX_LEVEL}m`}</p>
     </div>
   );
 }
@@ -1067,11 +1067,11 @@ function SimControl({ level, simOn, broken, onSet }) {
       <input type="range" min={0} max={500} step={1} value={level} onChange={(e) => onSet(Number(e.target.value))}
         style={{ width: "100%", accentColor: broken ? "#ef4444" : "#0ea5e9", cursor: "pointer" }} />
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <button onClick={() => onSet(MAX_LEVEL + 40)} style={{ flex: "1 1 46%", background: "linear-gradient(135deg,#ef4444,#b91c1c)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>🌊 Thử xả lũ</button>
+        <button onClick={() => onSet(MAX_LEVEL + 40)} style={{ flex: "1 1 46%", background: "linear-gradient(135deg,#ef4444,#b91c1c)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>💥 Thử vỡ đập</button>
         <button onClick={() => onSet(50)} style={{ flex: "1 1 46%", background: "linear-gradient(135deg,#f59e0b,#b45309)", border: "none", borderRadius: 9, color: "#fff", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>🌵 Thử hạn hán</button>
         <button onClick={() => onSet(null)} disabled={!simOn} style={{ flex: "1 1 100%", background: simOn ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 9, color: simOn ? "#cfe6f7" : "#5d83a3", padding: "8px 10px", fontWeight: 700, fontSize: 12.5, cursor: simOn ? "pointer" : "default" }}>↺ Về thực tế</button>
       </div>
-      <p style={{ margin: "8px 2px 0", fontSize: 11, color: "#5d83a3" }}>Kéo thanh hoặc bấm thử để xem trạng thái xả lũ (&gt;{MAX_LEVEL}m) và hạn hán (≤80m). Chỉ ảnh hưởng hình ảnh, không đổi dữ liệu.</p>
+      <p style={{ margin: "8px 2px 0", fontSize: 11, color: "#5d83a3" }}>Kéo thanh hoặc bấm thử để xem trạng thái vỡ đập (&gt;{MAX_LEVEL}m) và hạn hán (≤80m). Chỉ ảnh hưởng hình ảnh, không đổi dữ liệu.</p>
     </div>
   );
 }
