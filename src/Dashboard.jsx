@@ -344,6 +344,9 @@ export default function Dashboard() {
         {/* Sơ đồ cây đấu loại */}
         <Reveal delay={270}><BracketSection knockout={knockout} now={now} narrow={narrow} tz={tz} standings={standings} /></Reveal>
 
+        {/* Bảng còn đội ở vòng trong */}
+        <Reveal delay={285}><GroupSurvivalSection standings={standings} knockout={knockout} tz={tz} /></Reveal>
+
         {/* Digit tracker */}
         <Reveal delay={300}><DigitTracker verified={verified} verifiedCount={verifiedCount} narrow={narrow} /></Reveal>
 
@@ -914,6 +917,73 @@ function StandingsSection({ standings, koStarted }) {
         ))}
       </div>
       </>
+      )}
+    </div>
+  );
+}
+
+// Theo dõi mỗi bảng còn bao nhiêu đại diện ở vòng knock-out; bảng nào đã bị loại sạch.
+function GroupSurvivalSection({ standings, knockout, tz }) {
+  const keys = Object.keys(standings);
+  const started = (knockout || []).some((m) => m.played);
+  const rows = useMemo(() => {
+    if (keys.length === 0) return [];
+    const thirds = keys.map((g) => standings[g][2]).filter(Boolean);
+    thirds.sort((x, y) => y.Pts - x.Pts || y.GD - x.GD || y.GF - x.GF || x.team.localeCompare(y.team));
+    const bestThirds = new Set(thirds.slice(0, 8).map((t) => t.team));
+    const qualified = {};
+    keys.forEach((g) => {
+      qualified[g] = standings[g].filter((t, idx) => idx < 2 || (idx === 2 && bestThirds.has(t.team))).map((t) => t.team);
+    });
+    const elim = {}; // tên đội -> iso trận bị loại
+    (knockout || []).forEach((m) => {
+      if (!m.played) return;
+      const homeWon = m.a !== m.b ? m.a > m.b : (m.pens ? m.pens[0] > m.pens[1] : null);
+      if (homeWon === null) return;
+      const loser = homeWon ? m.away : m.home;
+      if (loser) elim[loser] = m.kickoff_iso || "";
+    });
+    return keys
+      .map((g) => {
+        const q = qualified[g];
+        const alive = q.filter((n) => !(n in elim));
+        const out = q.length > 0 && alive.length === 0;
+        const outIso = out ? (q.map((n) => elim[n]).filter(Boolean).sort().pop() || null) : null;
+        const sortKey = out ? (outIso ? new Date(outIso).getTime() : 0) : Infinity;
+        return { g, q, alive, out, outIso, sortKey };
+      })
+      .sort((x, y) => x.sortKey - y.sortKey || x.g.localeCompare(y.g));
+  }, [standings, knockout]);
+
+  const aliveGroups = rows.filter((r) => !r.out && r.q.length > 0).length;
+
+  return (
+    <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 18, marginTop: 20 }}>
+      <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700, color: "#bcdcf2", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Trophy size={16} color="#f472b6" /> Bảng còn đội ở vòng trong
+        {started && <span style={{ fontSize: 11, fontWeight: 700, color: "#86efac", background: "rgba(34,197,94,.15)", padding: "2px 8px", borderRadius: 999 }}>{aliveGroups}/{keys.length} bảng còn đội</span>}
+      </h3>
+      {!started ? (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#5d83a3" }}>Chưa vào vòng knock-out — phần này hiện khi vòng loại trực tiếp bắt đầu.</p>
+      ) : (
+        <>
+          <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi bảng có 2–3 đại diện ở vòng trong. "Đã hết đội" = tất cả đại diện đã bị loại. Xếp theo thời gian bị loại.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 10 }}>
+            {rows.map((r) => (
+              <div key={r.g} className="lift" style={{ background: r.out ? "rgba(239,68,68,.06)" : "rgba(255,255,255,.03)", border: `1px solid ${r.out ? "rgba(239,68,68,.3)" : "rgba(34,197,94,.25)"}`, borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 800, color: "#7dd3fc", fontSize: 13 }}>Bảng {r.g}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: r.out ? "#fca5a5" : "#86efac", background: r.out ? "rgba(239,68,68,.15)" : "rgba(34,197,94,.15)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>{r.out ? "đã hết đội" : `còn ${r.alive.length} đội`}</span>
+                </div>
+                {r.out ? (
+                  <div style={{ fontSize: 12, color: "#fca5a5" }}>Tất cả đại diện đã bị loại{r.outIso && <span style={{ color: "#9cc2dd" }}> · {fxTimeLabel({ kickoff_iso: r.outIso }, tz)}</span>}</div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: "#e2f1ff", fontWeight: 600 }}>{r.alive.map((n) => `${flag(n)} ${n}`).join("  ·  ")}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
