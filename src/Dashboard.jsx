@@ -969,14 +969,17 @@ function GroupSurvivalSection({ standings, knockout, tz }) {
         <>
           <p style={{ margin: "0 0 14px", fontSize: 12, color: "#5d83a3" }}>Mỗi bảng có 2–3 đại diện ở vòng trong. "Đã hết đội" = tất cả đại diện đã bị loại. Xếp theo thời gian bị loại.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 10 }}>
-            {rows.map((r) => (
-              <div key={r.g} className="lift" style={{ background: r.out ? "rgba(239,68,68,.06)" : "rgba(255,255,255,.03)", border: `1px solid ${r.out ? "rgba(239,68,68,.3)" : "rgba(34,197,94,.25)"}`, borderRadius: 12, padding: "10px 12px" }}>
+            {rows.map((r, i) => (
+              <div key={r.g} className="lift" style={{ background: r.out ? "rgba(239,68,68,.06)" : "rgba(255,255,255,.03)", border: `1px solid ${r.out ? "rgba(239,68,68,.3)" : "rgba(34,197,94,.25)"}`, borderRadius: 12, padding: "10px 12px", opacity: r.out ? 0.82 : 1, filter: r.out ? "grayscale(.5)" : "none", boxShadow: r.out ? "none" : "0 0 14px rgba(34,197,94,.12)", animation: "fadeUp .5s cubic-bezier(.2,.7,.3,1) both", animationDelay: `${i * 45}ms` }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                   <span style={{ fontWeight: 800, color: "#7dd3fc", fontSize: 13 }}>Bảng {r.g}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: r.out ? "#fca5a5" : "#86efac", background: r.out ? "rgba(239,68,68,.15)" : "rgba(34,197,94,.15)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" }}>{r.out ? "đã hết đội" : `còn ${r.alive.length} đội`}</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: r.out ? "#fca5a5" : "#86efac", background: r.out ? "rgba(239,68,68,.15)" : "rgba(34,197,94,.15)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap", animation: r.out ? "warnPulse 1.8s ease-in-out infinite" : "none" }}>
+                    {!r.out && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "livePulse 1.4s ease-in-out infinite" }} />}
+                    {r.out ? "đã hết đội" : `còn ${r.alive.length} đội`}
+                  </span>
                 </div>
                 {r.out ? (
-                  <div style={{ fontSize: 12, color: "#fca5a5" }}>Tất cả đại diện đã bị loại{r.outIso && <span style={{ color: "#9cc2dd" }}> · {fxTimeLabel({ kickoff_iso: r.outIso }, tz)}</span>}</div>
+                  <div style={{ fontSize: 12, color: "#fca5a5" }}>💀 Tất cả đại diện đã bị loại{r.outIso && <span style={{ color: "#9cc2dd" }}> · {fxTimeLabel({ kickoff_iso: r.outIso }, tz)}</span>}</div>
                 ) : (
                   <div style={{ fontSize: 12.5, color: "#e2f1ff", fontWeight: 600 }}>{r.alive.map((n) => `${flag(n)} ${n}`).join("  ·  ")}</div>
                 )}
