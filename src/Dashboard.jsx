@@ -979,7 +979,7 @@ function GroupSurvivalSection({ standings, knockout, tz }) {
                   </span>
                 </div>
                 {r.out ? (
-                  <div style={{ fontSize: 12, color: "#fca5a5" }}>💀 Tất cả đại diện đã bị loại{r.outIso && <span style={{ color: "#9cc2dd" }}> · {fxTimeLabel({ kickoff_iso: r.outIso }, tz)}</span>}</div>
+                  <div style={{ fontSize: 12, color: "#fca5a5" }}>Tất cả đại diện đã bị loại{r.outIso && <span style={{ color: "#9cc2dd" }}> · {fxTimeLabel({ kickoff_iso: r.outIso }, tz)}</span>}</div>
                 ) : (
                   <div style={{ fontSize: 12.5, color: "#e2f1ff", fontWeight: 600 }}>{r.alive.map((n) => `${flag(n)} ${n}`).join("  ·  ")}</div>
                 )}
